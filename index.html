@@ -106,7 +106,7 @@
         </main>
 
         <!-- Advanced settings Accordion -->
-        <div class="config-accordion">
+        <div class="config-accordion" style="display: none;">
             <button class="config-trigger" id="configTrigger">
                 <span style="display: flex; align-items: center; gap: 0.5rem;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
@@ -212,40 +212,11 @@
                 <!-- Percentage Ratio Card -->
                 <div class="stat-card">
                     <div class="stat-glow rate"></div>
-                    <p class="stat-label" style="color: var(--accent);">Tỉ lệ có đơn</p>
+                    <p class="stat-label" style="color: var(--accent);">Tỉ lệ đã order</p>
                     <p class="stat-value" id="ratePercentage">0%</p>
                 </div>
             </div>
 
-            <!-- Charts and Summary metrics -->
-            <div class="analytics-section">
-                <!-- Data Insights & Summary Cards -->
-                <div class="glass-card" style="display: flex; flex-direction: column; justify-content: space-between;">
-                    <div style="margin-bottom: 1rem;">
-                        <h3 style="margin-bottom: 0.5rem; font-size: 1.25rem;">Thống kê tổng quan</h3>
-                        <p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.6;">
-                            Hệ thống đã thực hiện so sánh chuỗi (không phân biệt hoa thường) giữa cột đối chiếu của File A và File B.
-                            Dưới đây là thống kê tỉ lệ và danh sách phân tích chi tiết. Bạn có thể sử dụng bộ lọc tìm kiếm nhanh hoặc lọc theo từng Brand cụ thể để xuất báo cáo riêng biệt.
-                        </p>
-                    </div>
-
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
-                        <div style="background: var(--bg-canvas); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-                            <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Số Brand khác biệt</h4>
-                            <p style="font-size: 1.5rem; font-weight: 800; color: var(--secondary);" id="brandCount">0</p>
-                        </div>
-                        <div style="background: var(--bg-canvas); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
-                            <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">KOC Trùng & Đủ Brand</h4>
-                            <p style="font-size: 1.5rem; font-weight: 800; color: var(--primary);" id="perfectMatchCount">0</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Pie Chart Card -->
-                <div class="glass-card chart-card">
-                    <canvas id="reconciliationChart"></canvas>
-                </div>
-            </div>
 
             <!-- Tabulated Lists -->
             <div class="glass-card">
@@ -291,6 +262,7 @@
                                     <th style="width: 70px;">STT</th>
                                     <th>KOC ID</th>
                                     <th>Link TikTok</th>
+                                    <th>GMV</th>
                                     <th>Tổng View 7 Video</th>
                                     <th>Trạng thái</th>
                                 </tr>

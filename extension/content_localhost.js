@@ -8,7 +8,12 @@ try {
 // Listen to messages from the web page (js/app.js)
 window.addEventListener("message", (event) => {
     if (event.source === window && event.data && event.data.type === "FROM_PAGE") {
-        chrome.runtime.sendMessage(event.data);
+        try {
+            chrome.runtime.sendMessage(event.data);
+        } catch (e) {
+            // Extension reloaded mid-session — nhắc user refresh trang
+            console.warn("[KOC] Extension context invalidated. Hãy refresh trang (F5).");
+        }
     }
 });
 

@@ -94,7 +94,6 @@
         function scrapeViaExtension(link, absoluteIndex, type, workerId = 0) {
             return new Promise((resolve) => {
                 activeScrapeResolvers[absoluteIndex] = resolve;
-                
                 window.postMessage({
                     type: "FROM_PAGE",
                     action: "SCRAPE_TIKTOK",
@@ -103,6 +102,13 @@
                     tabType: type,
                     workerId: workerId
                 }, "*");
+                // ponytail: 35s timeout bảo vệ worker khỏi treo nếu content script không inject được
+                setTimeout(() => {
+                    if (activeScrapeResolvers[absoluteIndex]) {
+                        delete activeScrapeResolvers[absoluteIndex];
+                        resolve({ success: false, error: 'TIMEOUT' });
+                    }
+                }, 90000);
             });
         }
 
@@ -113,53 +119,6 @@
             }, "*");
         }
 
-        let screenshotQueue = [];
-        let screenshotWorkerRunning = false;
-        let activeScreenshotResolvers = {};
-
-        function queueScreenshot(link, absoluteIndex, tableType) {
-            screenshotQueue.push({ link, absoluteIndex, tableType });
-            if (!screenshotWorkerRunning) {
-                processNextScreenshot();
-            }
-        }
-
-        async function processNextScreenshot() {
-            if (screenshotQueue.length === 0) {
-                screenshotWorkerRunning = false;
-                window.postMessage({
-                    type: "FROM_PAGE",
-                    action: "CLOSE_SCREENSHOT_TAB"
-                }, "*");
-                return;
-            }
-
-            screenshotWorkerRunning = true;
-            const task = screenshotQueue.shift();
-
-            if (batchCancelRequested) {
-                screenshotQueue = [];
-                screenshotWorkerRunning = false;
-                return;
-            }
-
-            await captureScreenshotOnlyViaExtension(task.link, task.absoluteIndex, task.tableType);
-            processNextScreenshot();
-        }
-
-        function captureScreenshotOnlyViaExtension(link, absoluteIndex, tableType) {
-            return new Promise((resolve) => {
-                activeScreenshotResolvers[absoluteIndex] = resolve;
-                
-                window.postMessage({
-                    type: "FROM_PAGE",
-                    action: "CAPTURE_SCREENSHOT_ONLY",
-                    url: link,
-                    index: absoluteIndex,
-                    tabType: tableType
-                }, "*");
-            });
-        }
 
         window.addEventListener("message", (event) => {
             if (event.data && event.data.type === "TO_PAGE") {
@@ -169,36 +128,18 @@
         });
 
         function handleScrapeResultFromExtension(result) {
-            const { action, index, tabType, success, viewSum, views, screenshotUrl, error } = result;
-            
+            const { index, tabType, success, viewSum, views, error } = result;
+
             let listToSearch = [];
-            if (tabType === 'unmatch') {
-                listToSearch = unmatchedTotalData;
-            } else if (tabType === 'match') {
-                listToSearch = matchedTotalData;
-            } else if (tabType === 'brand') {
-                listToSearch = missingBrandDataFiltered;
-            }
-            
+            if (tabType === 'unmatch') listToSearch = unmatchedTotalData;
+            else if (tabType === 'match') listToSearch = matchedTotalData;
+            else if (tabType === 'brand') listToSearch = missingBrandDataFiltered;
+
             const item = listToSearch[index];
             if (!item) return;
-            
-            if (action === "UPDATE_SCREENSHOT") {
-                item.screenshotUrl = screenshotUrl;
-                item.screenshotStatus = 'done';
-                renderTable(tabType);
-                
-                const sResolve = activeScreenshotResolvers[index];
-                if (sResolve) {
-                    delete activeScreenshotResolvers[index];
-                    sResolve();
-                }
-                return;
-            }
-            
+
             if (success) {
                 item.screenshotStatus = 'done';
-                item.screenshotUrl = screenshotUrl; // Base64 data URL
                 item.views = views;
                 item.viewSum = viewSum;
                 item.isRejected = viewSum < 1500;
@@ -208,13 +149,11 @@
                 item.screenshotError = error || 'Lỗi trích xuất';
                 showToast(`Lỗi: ${item.screenshotError}`, 'error');
             }
-            
+
             renderTable(tabType);
-            
-            // Resolve promise for batch loop or single action
+
             const resolve = activeScrapeResolvers[index];
             if (resolve) {
-                result.url = screenshotUrl;
                 result.isRejected = viewSum < 1500;
                 delete activeScrapeResolvers[index];
                 resolve(result);
@@ -425,7 +364,7 @@
                     brandSelect.appendChild(opt);
                 });
 
-                document.getElementById('brandCount').textContent = allBrandsSet.size;
+                if (document.getElementById('brandCount')) document.getElementById('brandCount').textContent = allBrandsSet.size;
 
                 // 2. Process File A (KOCs)
                 unmatchedTotalData = [];
@@ -440,6 +379,7 @@
                     let valId = row[indexA_Id] ? String(row[indexA_Id]).trim() : "";
                     let valC = valId;
                     let valLink = row[indexA_Link] ? String(row[indexA_Link]).trim() : "";
+                    let valGMV = row[4] !== undefined && row[4] !== null ? row[4] : "";
                     
                     // Normalize TikTok link: fallback to KOC ID if not a full URL
                     if (valLink) {
@@ -465,9 +405,9 @@
                             id: valId,
                             valC: valC,
                             link: valLink,
+                            gmv: valGMV,
                             brandsSent: mapB.get(compareValC),
                             screenshotStatus: 'idle',
-                            screenshotUrl: '',
                             screenshotError: ''
                         });
                     } else {
@@ -475,8 +415,8 @@
                             id: valId,
                             valC: valC,
                             link: valLink,
+                            gmv: valGMV,
                             screenshotStatus: 'idle',
-                            screenshotUrl: '',
                             screenshotError: ''
                         });
                     }
@@ -497,7 +437,7 @@
 
                 // Set perfect matches (matched and has brands associated)
                 let perfectMatchCount = matchedTotalData.filter(k => k.brandsSent && k.brandsSent.size > 0).length;
-                document.getElementById('perfectMatchCount').textContent = perfectMatchCount;
+                if (document.getElementById('perfectMatchCount')) document.getElementById('perfectMatchCount').textContent = perfectMatchCount;
 
                 // Setup pagination states
                 pagination.unmatch.filtered = [...unmatchedTotalData];
@@ -546,7 +486,9 @@
 
         // --- CHART DRAWING ---
         function drawChart(unmatchCount, matchCount) {
-            const ctx = document.getElementById('reconciliationChart').getContext('2d');
+            const chartEl = document.getElementById('reconciliationChart');
+            if (!chartEl) return;
+            const ctx = chartEl.getContext('2d');
             
             // Destroy existing chart if any
             if (reconciliationChartInstance) {
@@ -695,6 +637,12 @@
             renderTable(type);
         }
 
+        function formatGMV(val) {
+            const n = Math.round(parseFloat(val));
+            if (isNaN(n)) return val;
+            return n.toLocaleString('de-DE').replace(/,/g, '.') + ' VND';
+        }
+
         function formatViewCount(num) {
             if (num === undefined || num === null) return '0';
             if (num >= 1000000) {
@@ -749,7 +697,9 @@
                     if (item.screenshotStatus === 'pending') {
                         statusHtml = '<span class="status-dot-text"><span class="status-dot yellow"></span> Đang cào...</span>';
                     } else if (item.screenshotStatus === 'error') {
-                        statusHtml = `<span class="status-dot-text" title="${item.screenshotError || 'Lỗi cào view'}"><span class="status-dot red"></span> Lỗi</span>`;
+                        const errMsg = item.screenshotError || 'Lỗi cào view';
+                        const shortErr = errMsg === 'TIMEOUT' ? 'Timeout' : errMsg.toLowerCase().includes('captcha') ? 'Captcha' : errMsg.toLowerCase().includes('video') ? 'Ít video' : 'Lỗi TikTok';
+                        statusHtml = `<span class="status-dot-text" title="${errMsg}"><span class="status-dot red"></span> ${shortErr}</span>`;
                     } else if (item.viewSum !== undefined) {
                         const sumFormatted = formatViewCount(item.viewSum);
                         viewSumHtml = `<span style="font-weight:600; color:var(--text-main);" title="Chi tiết: ${item.views ? item.views.slice(0, 10).join(', ') : ''}">${sumFormatted}</span>`;
@@ -764,6 +714,7 @@
                         <td>${stt}</td>
                         <td style="font-weight: 600;">${item.id || '-'}</td>
                         <td>${linkHtml}</td>
+                        <td>${item.gmv !== undefined && item.gmv !== '' ? formatGMV(item.gmv) : '-'}</td>
                         <td>${viewSumHtml}</td>
                         <td>${statusHtml}</td>
                     `;
@@ -814,16 +765,14 @@
 
             if (type === 'unmatch') {
                 if (!unmatchedTotalData.length) return;
-                dataToExport = pagination.unmatch.filtered.map(i => {
-                    const statusStr = i.viewSum !== undefined ? (i.isRejected ? "LOẠI" : "ĐẠT") : "Chưa cào view";
-                    return {
+                dataToExport = pagination.unmatch.filtered
+                    .filter(i => i.viewSum !== undefined && !i.isRejected)
+                    .map(i => ({
                         "KOC ID": i.id,
                         "Link TikTok (Cột R)": i.link,
-                        "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : "",
-                        "Trạng thái (Hệ thống loại)": statusStr
-                    };
-                });
-                prefix = "KOC_Chua_Tung_Gui_Don";
+                        "Tổng View 7 Video": i.viewSum
+                    }));
+                prefix = "KOC_Dat_Chua_Tung_Gui_Don";
             } else if (type === 'brand') {
                 const selectedBrand = document.getElementById('brandSelector').value;
                 if (!selectedBrand || !missingBrandDataFiltered.length) return;
@@ -871,28 +820,6 @@
         let batchCancelRequested = false;
         let currentBatchType = '';
 
-        // Check if helper server is active
-        async function checkHelperStatus() {
-            if (isExtensionActive()) {
-                updateHelperStatusUI(true);
-                return;
-            }
-            try {
-                const res = await fetch('http://localhost:3000/api/status');
-                const data = await res.json();
-                if (data.success) {
-                    isHelperActive = true;
-                    updateHelperStatusUI(true);
-                } else {
-                    isHelperActive = false;
-                    updateHelperStatusUI(false);
-                }
-            } catch (err) {
-                isHelperActive = false;
-                updateHelperStatusUI(false);
-            }
-        }
-
         function updateHelperStatusUI(active) {
             const dot = document.getElementById('helperStatusDot');
             const text = document.getElementById('helperStatusText');
@@ -903,22 +830,17 @@
                     dot.className = 'status-dot green';
                     text.textContent = 'Extension Hoạt động';
                     badge.title = 'Extension KOC đang kích hoạt và sẵn sàng cào view!';
-                } else if (active) {
-                    dot.className = 'status-dot green';
-                    text.textContent = 'Helper đang chạy';
-                    badge.title = 'Screenshot helper đang hoạt động trên port 3000';
                 } else {
                     dot.className = 'status-dot red';
-                    text.textContent = 'Chưa chạy helper';
-                    badge.title = 'Click để xem hướng dẫn chạy helper chụp ảnh';
+                    text.textContent = 'Extension chưa kích hoạt';
+                    badge.title = 'Vui lòng kiểm tra lại tiện ích trình duyệt';
                 }
             }
         }
 
         // Periodically check helper status
-        setInterval(checkHelperStatus, 5000);
         window.addEventListener('load', () => {
-            checkHelperStatus();
+            updateHelperStatusUI(isExtensionActive());
             
             // Sync checkboxes for headful/headless mode
             const globalCb = document.getElementById('globalHeadfulCheckbox');
@@ -932,15 +854,6 @@
                 });
             }
         });
-
-        // Show helper setup instructions modal
-        function showHelperInstructions() {
-            if (isHelperActive) {
-                showToast('Helper đang hoạt động tốt trên port 3000!', 'success');
-                return;
-            }
-            document.getElementById('helperInstructionsModal').style.display = 'flex';
-        }
 
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
@@ -961,82 +874,27 @@
             document.getElementById('lightboxModal').style.display = 'none';
         }
 
-        // Capture a single row's link
+        // Cào view một link đơn
         async function captureSingle(id, url, absoluteIndex, tableType) {
-            // Get target item in source data arrays
-            let item;
-            let listToSearch = [];
-            if (tableType === 'unmatch') {
-                listToSearch = unmatchedTotalData;
-            } else if (tableType === 'match') {
-                listToSearch = matchedTotalData;
-            } else if (tableType === 'brand') {
-                listToSearch = missingBrandDataFiltered;
+            if (!isExtensionActive()) {
+                showToast('Extension chưa hoạt động! Vui lòng kiểm tra lại.', 'error');
+                return;
             }
-
-            item = listToSearch[absoluteIndex];
+            let listToSearch = tableType === 'unmatch' ? unmatchedTotalData : tableType === 'match' ? matchedTotalData : missingBrandDataFiltered;
+            const item = listToSearch[absoluteIndex];
             if (!item) return;
-
             item.screenshotStatus = 'pending';
             item.screenshotError = '';
             renderTable(tableType);
-
-            // Extension Scrape Path
-            if (isExtensionActive()) {
-                await scrapeViaExtension(url, absoluteIndex, tableType);
-                return;
-            }
-
-            // Local Helper Server Path
-            if (!isHelperActive) {
-                showHelperInstructions();
-                item.screenshotStatus = 'idle';
-                renderTable(tableType);
-                return;
-            }
-
-            try {
-                const delayValue = document.getElementById('batchDelay') ? parseInt(document.getElementById('batchDelay').value) * 1000 : 4000;
-                const response = await fetch('http://localhost:3000/api/screenshot', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        id: item.id || item.valC,
-                        url: url,
-                        headless: !document.getElementById('globalHeadfulCheckbox').checked,
-                        delay: delayValue
-                    })
-                });
-
-                const result = await response.json();
-                if (result.success) {
-                    item.screenshotStatus = 'done';
-                    item.screenshotUrl = result.url;
-                    item.views = result.views;
-                    item.parsedViews = result.parsedViews;
-                    item.viewSum = result.viewSum;
-                    item.isRejected = result.isRejected;
-                    showToast(`Chụp thành công: ${item.id || item.valC}`, 'success');
-                } else {
-                    item.screenshotStatus = 'error';
-                    item.screenshotError = result.error || 'Lỗi chụp ảnh';
-                    showToast(`Lỗi chụp: ${item.id || item.valC}`, 'error');
-                }
-            } catch (err) {
-                item.screenshotStatus = 'error';
-                item.screenshotError = err.message || 'Lỗi kết nối helper';
-                showToast(`Lỗi kết nối helper: ${err.message}`, 'error');
-            }
-            renderTable(tableType);
+            await scrapeViaExtension(url, absoluteIndex, tableType);
         }
 
         // Open Batch Capture Modal (Bypassed modal, directly starts processing)
         function openBatchCaptureModal(tableType) {
-            if (!isHelperActive && !isExtensionActive()) {
-                showHelperInstructions();
+            if (!isExtensionActive()) {
+                showToast('Extension chưa hoạt động! Vui lòng kiểm tra lại.', 'error');
                 return;
             }
-
             currentBatchType = tableType;
             startBatchProcessing();
         }
@@ -1057,8 +915,8 @@
 
         // Start Batch Processing Loop
         async function startBatchProcessing() {
-            if (!isHelperActive && !isExtensionActive()) {
-                showHelperInstructions();
+            if (!isExtensionActive()) {
+                showToast('Tiện ích (Extension) chưa hoạt động! Vui lòng kiểm tra lại.', 'error');
                 return;
             }
 
@@ -1072,12 +930,21 @@
             if (document.getElementById('startBatchBtn')) document.getElementById('startBatchBtn').style.display = 'none';
             if (document.getElementById('stopBatchBtn')) document.getElementById('stopBatchBtn').style.display = 'block';
             if (document.getElementById('openScreenshotsDirBtn')) document.getElementById('openScreenshotsDirBtn').style.display = 'flex';
+            // Reset nút dừng về trạng thái ban đầu (có thể đang là "Tiếp tục")
+            const stopMainBtn = document.getElementById('stopMainScrapeBtn');
+            if (stopMainBtn) {
+                stopMainBtn.textContent = 'Dừng cào';
+                stopMainBtn.style.color = 'var(--danger)';
+                stopMainBtn.style.borderColor = 'rgba(239, 68, 68, 0.3)';
+                stopMainBtn.style.background = 'rgba(239, 68, 68, 0.1)';
+                stopMainBtn.onclick = stopBatchProcessing;
+            }
 
             const headless = document.getElementById('batchHeadful') ? !document.getElementById('batchHeadful').checked : true;
             const delayValue = document.getElementById('batchDelay') ? (parseInt(document.getElementById('batchDelay').value) * 1000 || 4000) : 4000;
             
-            // Default to 5 threads if extension is active
-            const numThreads = isExtensionActive() ? 5 : 1;
+            // 3 threads để tránh TikTok rate-limit 403
+            const numThreads = isExtensionActive() ? 3 : 1;
 
             // Get target list
             let sourceData = [];
@@ -1089,7 +956,8 @@
                 sourceData = pagination.brand.filtered;
             }
 
-            const itemsWithLinks = sourceData.filter(item => item.link && String(item.link).startsWith('http'));
+            // Bỏ qua item đã cào thành công → hỗ trợ "Tiếp tục" sau khi dừng
+            const itemsWithLinks = sourceData.filter(item => item.link && String(item.link).startsWith('http') && item.viewSum === undefined);
             const total = itemsWithLinks.length;
             
             if (total === 0) {
@@ -1133,30 +1001,25 @@
                     try {
                         let result;
                         if (isExtensionActive()) {
-                            // Cố tình làm chậm và chạy rải rác các request để tránh bị TikTok chặn (Rate Limit)
-                            const staggerDelay = 1500 + (workerId * 800); 
+                            // Stagger lần đầu + delay 2s sau mỗi item để tránh TikTok rate-limit
+                            const staggerDelay = workerId * 2000;
                             await new Promise(resolve => setTimeout(resolve, staggerDelay));
-                            
+
                             result = await scrapeViaExtension(item.link, absoluteIndex, currentBatchType, workerId);
+                            // Retry 1 lần nếu TikTok trả lỗi tạm thời
+                            if (!result.success && result.error === 'TIKTOK_ERROR' && !batchCancelRequested) {
+                                await new Promise(r => setTimeout(r, 3000));
+                                result = await scrapeViaExtension(item.link, absoluteIndex, currentBatchType, workerId);
+                            }
+                            // Cooldown sau mỗi item
+                            await new Promise(r => setTimeout(r, 2000));
                         } else {
-                            const response = await fetch('http://localhost:3000/api/screenshot', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                    id: item.id || item.valC,
-                                    url: item.link,
-                                    headless: headless,
-                                    delay: delayValue
-                                })
-                            });
-                            result = await response.json();
+                            result = { success: false, error: 'Extension not active' };
                         }
 
                         if (result.success && !batchCancelRequested) {
-                            item.screenshotStatus = 'done';
-                            item.screenshotUrl = result.url || result.screenshotUrl;
+                            item.screenshotStatus = 'idle';
                             item.views = result.views;
-                            item.parsedViews = result.parsedViews;
                             item.viewSum = result.viewSum;
                             item.isRejected = result.isRejected;
                             successCount++;
@@ -1164,9 +1027,6 @@
                                 badge.textContent = 'THÀNH CÔNG';
                                 badge.className = 'batch-status-badge success';
                             }
-
-                            // Screenshot queue disabled temporarily per user request
-                            item.screenshotStatus = 'idle';
                         } else {
                             if (!batchCancelRequested) {
                                 item.screenshotStatus = 'error';
@@ -1253,7 +1113,15 @@
             document.getElementById('startBatchBtn').style.display = 'block';
             document.getElementById('stopBatchBtn').style.display = 'none';
             document.getElementById('batchProgressText').textContent = 'Tiến trình đã bị dừng bởi người dùng.';
-            
+            // Đổi nút "Dừng cào" → "Tiếp tục" để resume
+            const stopBtn = document.getElementById('stopMainScrapeBtn');
+            if (stopBtn) {
+                stopBtn.textContent = 'Tiếp tục';
+                stopBtn.style.color = 'var(--success)';
+                stopBtn.style.borderColor = 'rgba(16, 185, 129, 0.3)';
+                stopBtn.style.background = 'rgba(16, 185, 129, 0.1)';
+                stopBtn.onclick = startBatchProcessing;
+            }
             if (isExtensionActive()) {
                 closeScrapeTabViaExtension();
             }
