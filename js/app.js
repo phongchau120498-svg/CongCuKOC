@@ -121,7 +121,7 @@
         });
 
         function handleScrapeResultFromExtension(result) {
-            const { index, tabType, success, viewSum, views, screenshotUrl, error } = result;
+            const { action, index, tabType, success, viewSum, views, screenshotUrl, error } = result;
             
             let listToSearch = [];
             if (tabType === 'unmatch') {
@@ -134,6 +134,12 @@
             
             const item = listToSearch[index];
             if (!item) return;
+            
+            if (action === "UPDATE_SCREENSHOT") {
+                item.screenshotUrl = screenshotUrl;
+                renderTable(tabType);
+                return;
+            }
             
             if (success) {
                 item.screenshotStatus = 'done';

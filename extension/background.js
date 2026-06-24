@@ -1,5 +1,6 @@
 let workerTabs = {}; // workerId -> tabId
 let pendingRequests = {}; // tabId -> request details
+let screenshotInProgress = {}; // tabId -> boolean
 
 // Setup dynamic rules to block heavy assets on TikTok
 function setupTikTokBlockingRules() {
@@ -90,23 +91,32 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
         const targetTabId = workerTabs[workerId];
 
-        // active: false to keep focus on the main application page
-        if (targetTabId !== undefined && targetTabId !== null) {
-            chrome.tabs.update(targetTabId, { url: url, active: false }, (tab) => {
-                if (chrome.runtime.lastError || !tab) {
-                    chrome.tabs.create({ url: url, active: false }, (newTab) => {
-                        workerTabs[workerId] = newTab.id;
-                        startScraping(newTab.id);
-                    });
-                } else {
-                    startScraping(targetTabId);
-                }
-            });
+        const executeUpdate = () => {
+            // active: false to keep focus on the main application page
+            if (targetTabId !== undefined && targetTabId !== null) {
+                chrome.tabs.update(targetTabId, { url: url, active: false }, (tab) => {
+                    if (chrome.runtime.lastError || !tab) {
+                        chrome.tabs.create({ url: url, active: false }, (newTab) => {
+                            workerTabs[workerId] = newTab.id;
+                            startScraping(newTab.id);
+                        });
+                    } else {
+                        startScraping(targetTabId);
+                    }
+                });
+            } else {
+                chrome.tabs.create({ url: url, active: false }, (newTab) => {
+                    workerTabs[workerId] = newTab.id;
+                    startScraping(newTab.id);
+                });
+            }
+        };
+
+        // Delay loading the next URL if this tab is currently focused and taking a screenshot
+        if (targetTabId && screenshotInProgress[targetTabId]) {
+            setTimeout(executeUpdate, 450);
         } else {
-            chrome.tabs.create({ url: url, active: false }, (newTab) => {
-                workerTabs[workerId] = newTab.id;
-                startScraping(newTab.id);
-            });
+            executeUpdate();
         }
     } else if (message.action === "SCRAPE_RESULT") {
         const tabId = sender.tab.id;
@@ -130,49 +140,63 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return; // Do not send finished message yet!
             }
 
-            const sendResult = (screenshot) => {
-                chrome.tabs.sendMessage(request.senderTabId, {
-                    action: "SCRAPE_FINISHED",
-                    index: request.index,
-                    tabType: request.tabType,
-                    url: request.url,
-                    success: message.success,
-                    viewSum: message.viewSum,
-                    views: message.views,
-                    screenshotUrl: screenshot,
-                    error: message.error
-                });
-                delete pendingRequests[tabId];
-            };
+            const senderTabId = request.senderTabId;
+            const index = request.index;
+            const tabType = request.tabType;
+            const url = request.url;
 
-            // Optimization: Only capture screenshots for "Đạt" (Passed) channels (viewSum >= 1500)
+            // 1. Send the views result immediately to the client page so the worker resolves instantly
+            chrome.tabs.sendMessage(senderTabId, {
+                action: "SCRAPE_FINISHED",
+                index: index,
+                tabType: tabType,
+                url: url,
+                success: message.success,
+                viewSum: message.viewSum,
+                views: message.views,
+                screenshotUrl: "", // initially empty, updated asynchronously
+                error: message.error
+            });
+
+            // Clean up request from pending queue
+            delete pendingRequests[tabId];
+
+            // 2. Asynchronously capture the screenshot if Passed ("Đạt")
             const isDat = message.success && message.viewSum >= 1500;
             if (isDat) {
+                screenshotInProgress[tabId] = true;
+                
                 // Focus the scraping tab to take screenshot
                 chrome.tabs.update(tabId, { active: true }, (focusedTab) => {
                     if (chrome.runtime.lastError || !focusedTab) {
-                        sendResult("");
+                        screenshotInProgress[tabId] = false;
                         return;
                     }
                     
-                    // Wait for tab focus rendering paint
+                    // Wait for focus paint
                     setTimeout(() => {
                         chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }, (dataUrl) => {
                             const error = chrome.runtime.lastError;
-                            const screenshot = error ? "" : dataUrl;
+                            
+                            // Send screenshot update to page
+                            if (!error && dataUrl) {
+                                chrome.tabs.sendMessage(senderTabId, {
+                                    action: "UPDATE_SCREENSHOT",
+                                    index: index,
+                                    tabType: tabType,
+                                    screenshotUrl: dataUrl
+                                });
+                            }
                             
                             // Restore focus back to main page tab instantly
-                            chrome.tabs.update(request.senderTabId, { active: true }, () => {
-                                chrome.runtime.lastError; // silence errors if page was closed
+                            chrome.tabs.update(senderTabId, { active: true }, () => {
+                                chrome.runtime.lastError; // silence errors if page closed
                             });
                             
-                            sendResult(screenshot);
+                            screenshotInProgress[tabId] = false;
                         });
                     }, 400);
                 });
-            } else {
-                // Skip screenshot entirely for failed or "Không Đạt" channels to stay quiet in the background
-                sendResult("");
             }
         }
     } else if (message.action === "CLOSE_SCRAPE_TAB") {
@@ -185,5 +209,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         }
         workerTabs = {};
+        screenshotInProgress = {};
     }
 });
