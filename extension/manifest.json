@@ -8,14 +8,18 @@
   ],
   "host_permissions": [
     "https://*.tiktok.com/*",
-    "http://localhost:3000/*"
+    "http://localhost:3000/*",
+    "file:///*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["http://localhost:3000/*"],
+      "matches": [
+        "http://localhost:3000/*",
+        "file:///*"
+      ],
       "js": ["content_localhost.js"],
       "run_at": "document_start"
     },
