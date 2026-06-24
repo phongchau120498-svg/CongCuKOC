@@ -3,75 +3,7 @@ let pendingRequests = {}; // tabId -> request details
 let screenshotInProgress = {}; // tabId -> boolean
 let screenshotTabId = null; // dedicated screenshot tab
 
-// Setup dynamic rules to block heavy assets on TikTok
-function setupTikTokBlockingRules() {
-    if (!chrome.declarativeNetRequest) {
-        console.warn("[KOC Extension] declarativeNetRequest API not available.");
-        return;
-    }
-    
-    const rules = [
-        {
-            id: 1001,
-            priority: 1,
-            action: { type: "block" },
-            condition: {
-                urlFilter: "*",
-                initiatorDomains: ["tiktok.com"],
-                resourceTypes: ["image", "media", "font"]
-            }
-        },
-        {
-            id: 1002,
-            priority: 1,
-            action: { type: "block" },
-            condition: {
-                urlFilter: "*analytics*",
-                initiatorDomains: ["tiktok.com"]
-            }
-        },
-        {
-            id: 1003,
-            priority: 1,
-            action: { type: "block" },
-            condition: {
-                urlFilter: "*doubleclick*",
-                initiatorDomains: ["tiktok.com"]
-            }
-        },
-        {
-            id: 1004,
-            priority: 1,
-            action: { type: "block" },
-            condition: {
-                urlFilter: "*facebook*",
-                initiatorDomains: ["tiktok.com"]
-            }
-        }
-    ];
-
-    chrome.declarativeNetRequest.updateDynamicRules({
-        addRules: rules,
-        removeRuleIds: [1001, 1002, 1003, 1004]
-    }, () => {
-        if (chrome.runtime.lastError) {
-            console.error("[KOC Extension] Failed to set dynamic rules:", chrome.runtime.lastError.message);
-        } else {
-            console.log("[KOC Extension] TikTok blocking rules registered successfully.");
-        }
-    });
-}
-
-// Run rules setup on install and startup
-chrome.runtime.onInstalled.addListener(() => {
-    setupTikTokBlockingRules();
-});
-chrome.runtime.onStartup.addListener(() => {
-    setupTikTokBlockingRules();
-});
-// Also execute immediately in case of service worker reload
-setupTikTokBlockingRules();
-
+// Blocking rules disabled to prevent TikTok's React frontend from crashing when media/images fail to load
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "SCRAPE_TIKTOK") {
         const senderTabId = sender.tab.id;

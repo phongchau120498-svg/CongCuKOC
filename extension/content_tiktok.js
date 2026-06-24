@@ -33,15 +33,20 @@ function parseViews(viewStr) {
     return isNaN(num) ? 0 : Math.round(num * multiplier);
 }
 
-// Wait helper - optimized to resolve smaller channels instantly when page completes loading
-async function waitForElements(selector, minCount, timeout) {
+// Wait helper - support multi-selectors and early-exit when page finishes loading
+async function waitForElements(selectors, minCount, timeout) {
     let start = Date.now();
     while (Date.now() - start < timeout) {
-        const elements = document.querySelectorAll(selector);
+        let bestElements = [];
         
-        // If we found the target count, return immediately
-        if (elements.length >= minCount) {
-            return elements;
+        for (const selector of selectors) {
+            const found = document.querySelectorAll(selector);
+            if (found.length >= minCount) {
+                return found;
+            }
+            if (found.length > bestElements.length) {
+                bestElements = found;
+            }
         }
         
         // Check for TikTok error screen ("Đã xảy ra lỗi")
@@ -53,9 +58,14 @@ async function waitForElements(selector, minCount, timeout) {
         }
 
         // If the page is fully loaded and we have at least 4 videos, return early after a small settle delay
-        if (elements.length >= 4 && document.readyState === 'complete') {
+        if (bestElements.length >= 4 && document.readyState === 'complete') {
             await new Promise(r => setTimeout(r, 1200));
-            return document.querySelectorAll(selector);
+            // Re-query the best selector
+            for (const selector of selectors) {
+                const found = document.querySelectorAll(selector);
+                if (found.length >= 4) return found;
+            }
+            return bestElements;
         }
         
         // If captcha is detected, reset start time to prevent timeout and reloading
@@ -70,62 +80,79 @@ async function waitForElements(selector, minCount, timeout) {
 
         await new Promise(r => setTimeout(r, 250));
     }
-    return document.querySelectorAll(selector);
+    
+    // Return whatever elements we found as a fallback
+    for (const selector of selectors) {
+        const found = document.querySelectorAll(selector);
+        if (found.length >= 4) return found;
+    }
+    return [];
 }
 
 // Traversal helper to find video view counts inside JSON Rehydration objects
 function extractVideoViewsFromJSON(jsonObj) {
     const playCounts = [];
     const seenIds = new Set();
-    
-    // 1. Try to find the structured lists of item cards (which are cleaner and pre-ordered)
     const items = [];
-    function findItemLists(obj) {
-        if (!obj || typeof obj !== 'object') return;
+    
+    // Shallow traverse (max depth 3) to find array lists of item cards to avoid stack overflow
+    function findItems(obj, depth = 0) {
+        if (!obj || typeof obj !== 'object' || depth > 3) return;
         
+        if (Array.isArray(obj)) {
+            // Check if this array contains video objects with views
+            if (obj.length > 0 && obj[0] && typeof obj[0] === 'object' && 
+                (obj[0].playCount !== undefined || (obj[0].stats && obj[0].stats.playCount !== undefined))) {
+                items.push(...obj);
+                return;
+            }
+        }
+        
+        // Check standard key names
         if (Array.isArray(obj.itemList)) {
             items.push(...obj.itemList);
+            return;
         }
         if (Array.isArray(obj.itemStruct)) {
             items.push(...obj.itemStruct);
+            return;
         }
-        if (Array.isArray(obj.itemModule)) {
-            items.push(...obj.itemModule);
+        if (obj.ItemModule && typeof obj.ItemModule === 'object') {
+            items.push(...Object.values(obj.ItemModule));
+            return;
         }
         
         for (const key in obj) {
             if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                if (key !== 'itemList' && key !== 'itemStruct' && key !== 'itemModule') {
-                    findItemLists(obj[key]);
+                if (key !== 'itemList' && key !== 'itemStruct' && key !== 'ItemModule') {
+                    findItems(obj[key], depth + 1);
                 }
             }
         }
     }
     
-    findItemLists(jsonObj);
+    findItems(jsonObj);
     
-    if (items.length > 0) {
-        items.forEach(item => {
-            if (!item || typeof item !== 'object') return;
-            const id = item.id || (item.video && item.video.id);
-            const play = parseInt(item.playCount || (item.stats && item.stats.playCount));
-            if (!isNaN(play) && id) {
-                if (!seenIds.has(id)) {
-                    seenIds.add(id);
-                    playCounts.push(play);
-                }
+    items.forEach(item => {
+        if (!item || typeof item !== 'object') return;
+        const id = item.id || (item.video && item.video.id);
+        const play = parseInt(item.playCount || (item.stats && item.stats.playCount));
+        if (!isNaN(play) && id) {
+            if (!seenIds.has(id)) {
+                seenIds.add(id);
+                playCounts.push(play);
             }
-        });
-    }
+        }
+    });
     
-    // 2. Fallback general traversal if list structured check was empty
+    // Fallback general traverse if list structured check was empty
     if (playCounts.length < 4) {
         seenIds.clear();
         playCounts.length = 0;
         let dummyIdCounter = 0;
         
-        function generalTraverse(obj) {
-            if (!obj || typeof obj !== 'object') return;
+        function generalTraverse(obj, depth = 0) {
+            if (!obj || typeof obj !== 'object' || depth > 8) return; // limit depth to avoid stack limit
             
             if (obj.stats && typeof obj.stats.playCount !== 'undefined') {
                 const play = parseInt(obj.stats.playCount);
@@ -152,7 +179,7 @@ function extractVideoViewsFromJSON(jsonObj) {
             
             for (const key in obj) {
                 if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                    generalTraverse(obj[key]);
+                    generalTraverse(obj[key], depth + 1);
                 }
             }
         }
@@ -161,26 +188,6 @@ function extractVideoViewsFromJSON(jsonObj) {
     }
     
     return playCounts;
-}
-
-// Check if target username exists inside the JSON to prevent parsing wrong page data
-function hasUniqueIdInJSON(jsonObj, targetUsername) {
-    let found = false;
-    function traverse(obj) {
-        if (found) return;
-        if (!obj || typeof obj !== 'object') return;
-        if (typeof obj.uniqueId === 'string' && obj.uniqueId.toLowerCase() === targetUsername) {
-            found = true;
-            return;
-        }
-        for (const key in obj) {
-            if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                traverse(obj[key]);
-            }
-        }
-    }
-    traverse(jsonObj);
-    return found;
 }
 
 // Try parsing user-detail JSON from TikTok's script tags
@@ -200,14 +207,18 @@ function tryExtractViewsFromScriptTags() {
         
         for (const scriptEl of scripts) {
             if (scriptEl && scriptEl.textContent) {
-                const jsonObj = JSON.parse(scriptEl.textContent);
-                
-                // Validate that the JSON object contains user data for our target KOC username
-                if (urlUsername && !hasUniqueIdInJSON(jsonObj, urlUsername)) {
-                    console.warn(`[KOC Extension] JSON does not contain target username (${urlUsername}). Ignoring stale or recommended user JSON.`);
-                    continue;
+                // 1. Fast regex check on the raw JSON string before parsing to see if it matches target KOC uniqueId
+                // This avoids parsing and recursively checking stale rehydration caches or recommended user data
+                if (urlUsername) {
+                    const uniqueIdRegex = new RegExp('"uniqueId"\\s*:\\s*"' + urlUsername + '"', 'i');
+                    if (!uniqueIdRegex.test(scriptEl.textContent)) {
+                        console.warn(`[KOC Extension] JSON script does not contain target username (${urlUsername}) in uniqueId key. Skipping.`);
+                        continue;
+                    }
                 }
 
+                // 2. Parse and extract video views
+                const jsonObj = JSON.parse(scriptEl.textContent);
                 const playCounts = extractVideoViewsFromJSON(jsonObj);
                 if (playCounts && playCounts.length >= 4) {
                     console.log("[KOC Extension] Successfully extracted views from validated JSON script tag:", playCounts);
@@ -253,7 +264,13 @@ async function scrapeTikTokViews() {
     console.log("[KOC Extension] JSON parse empty or failed, falling back to DOM scraping...");
     
     // Wait for the video views to load. Extended timeout (15s) for slower loaded tabs
-    const elements = await waitForElements('[data-e2e="video-views"]', 10, 15000);
+    const targetSelectors = [
+        '[data-e2e="video-views"]',
+        'strong[class*="count"]',
+        '.video-count',
+        '[class*="video-count"]'
+    ];
+    const elements = await waitForElements(targetSelectors, 10, 15000);
     
     if (elements.length < 4) {
         // Check if we are stuck on a verification page or TikTok error screen
@@ -283,9 +300,16 @@ async function scrapeTikTokViews() {
     await new Promise(r => setTimeout(r, 500));
     
     // Rescrape elements after scroll to get fresh view values
-    const finalElements = document.querySelectorAll('[data-e2e="video-views"]');
-    const views = [];
+    let finalElements = [];
+    for (const selector of targetSelectors) {
+        const found = document.querySelectorAll(selector);
+        if (found.length >= 4) {
+            finalElements = found;
+            break;
+        }
+    }
     
+    const views = [];
     finalElements.forEach(el => {
         const text = el.textContent.trim();
         views.push(parseViews(text));
