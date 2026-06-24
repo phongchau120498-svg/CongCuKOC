@@ -1164,10 +1164,11 @@
                     item.screenshotStatus = 'pending';
                     renderTable(currentBatchType);
 
+                    const absoluteIndex = sourceData.indexOf(item);
+
                     try {
                         let result;
                         if (isExtensionActive()) {
-                            const absoluteIndex = sourceData.indexOf(item);
                             result = await scrapeViaExtension(item.link, absoluteIndex, currentBatchType, workerId);
                         } else {
                             const response = await fetch('http://localhost:3000/api/screenshot', {

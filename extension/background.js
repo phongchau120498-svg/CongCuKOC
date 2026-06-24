@@ -1,9 +1,7 @@
-let workerTabs = {}; // workerId -> tabId
 let pendingRequests = {}; // tabId -> request details
-let screenshotInProgress = {}; // tabId -> boolean
 let screenshotTabId = null; // dedicated screenshot tab
 
-// Blocking rules disabled to prevent TikTok's React frontend from crashing when media/images fail to load
+// Handles messages from content_localhost.js and content_tiktok.js
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "SCRAPE_TIKTOK") {
         const senderTabId = sender.tab.id;
@@ -12,45 +10,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const tabType = message.tabType;
         const workerId = message.workerId || 0;
 
-        const startScraping = (tabId) => {
-            pendingRequests[tabId] = {
+        // Force a NEW background tab for each request to completely bypass Chrome's background tab suspension
+        chrome.tabs.create({ url: url, active: false }, (newTab) => {
+            pendingRequests[newTab.id] = {
                 senderTabId: senderTabId,
                 index: index,
                 tabType: tabType,
                 url: url,
-                retryCount: 0 // Initialize retry count
+                retryCount: 0
             };
-        };
-
-        const targetTabId = workerTabs[workerId];
-
-        const executeUpdate = () => {
-            // active: false to keep focus on the main application page
-            if (targetTabId !== undefined && targetTabId !== null) {
-                chrome.tabs.update(targetTabId, { url: url, active: false }, (tab) => {
-                    if (chrome.runtime.lastError || !tab) {
-                        chrome.tabs.create({ url: url, active: false }, (newTab) => {
-                            workerTabs[workerId] = newTab.id;
-                            startScraping(newTab.id);
-                        });
-                    } else {
-                        startScraping(targetTabId);
-                    }
-                });
-            } else {
-                chrome.tabs.create({ url: url, active: false }, (newTab) => {
-                    workerTabs[workerId] = newTab.id;
-                    startScraping(newTab.id);
-                });
-            }
-        };
-
-        // Delay loading the next URL if this tab is currently in a cooldown state
-        if (targetTabId && screenshotInProgress[targetTabId]) {
-            setTimeout(executeUpdate, 500);
-        } else {
-            executeUpdate();
-        }
+        });
     } else if (message.action === "SCRAPE_RESULT") {
         const tabId = sender.tab.id;
         const request = pendingRequests[tabId];
@@ -58,12 +27,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (request) {
             // Self-healing retry check:
             const isCaptcha = message.error && (message.error.includes("captcha") || message.error.includes("Phát hiện captcha"));
-            if (!message.success && request.retryCount < 3 && !isCaptcha) {
+            
+            // Only retry once, and only for temporary network load errors (TIKTOK_ERROR)
+            if (!message.success && request.retryCount < 1 && !isCaptcha && message.error === "TIKTOK_ERROR") {
                 request.retryCount++;
-                const isTiktokError = message.error === "TIKTOK_ERROR";
-                const delay = isTiktokError ? 500 : 2500;
-                
-                console.log(`[KOC Extension] Scraping failed for ${request.url}. Retrying (${request.retryCount}/3) in ${delay}ms... Error: ${message.error}`);
+                console.log(`[KOC Extension] Scraping failed for ${request.url}. Retrying (${request.retryCount}/1) in 1000ms... Error: ${message.error}`);
                 
                 setTimeout(() => {
                     chrome.tabs.update(tabId, { url: request.url }, () => {
@@ -71,8 +39,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             console.error("[KOC Extension] Failed to reload tab for retry:", chrome.runtime.lastError.message);
                         }
                     });
-                }, delay);
-                return; // Do not send finished message yet!
+                }, 1000);
+                return; // Do not resolve yet
             }
 
             const senderTabId = request.senderTabId;
@@ -93,14 +61,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 error: message.error
             });
 
-            // Clean up request from pending queue
+            // 2. Clean up request and close the temporary scraping tab immediately
             delete pendingRequests[tabId];
-
-            // 2. Set screenshotInProgress to true to enforce a cooldown delay on this scraping tab (1.2s)
-            screenshotInProgress[tabId] = true;
-            setTimeout(() => {
-                screenshotInProgress[tabId] = false;
-            }, 1200);
+            chrome.tabs.remove(tabId, () => {
+                chrome.runtime.lastError; // silence closed errors
+            });
         }
     } else if (message.action === "CAPTURE_SCREENSHOT_ONLY") {
         const senderTabId = sender.tab.id;
@@ -171,16 +136,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             screenshotTabId = null;
         }
     } else if (message.action === "CLOSE_SCRAPE_TAB") {
-        for (const workerId in workerTabs) {
-            const tabId = workerTabs[workerId];
-            if (tabId) {
+        // Close all pending scraping tabs
+        for (const tabIdStr in pendingRequests) {
+            const tabId = parseInt(tabIdStr);
+            if (!isNaN(tabId)) {
                 chrome.tabs.remove(tabId, () => {
                     chrome.runtime.lastError;
                 });
             }
         }
-        workerTabs = {};
-        screenshotInProgress = {};
+        pendingRequests = {};
         
         if (screenshotTabId) {
             chrome.tabs.remove(screenshotTabId, () => {
