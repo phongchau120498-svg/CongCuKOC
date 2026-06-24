@@ -83,7 +83,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 senderTabId: senderTabId,
                 index: index,
                 tabType: tabType,
-                url: url
+                url: url,
+                retryCount: 0 // Initialize retry count
             };
         };
 
@@ -112,8 +113,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const request = pendingRequests[tabId];
         
         if (request) {
-            // Note: captureVisibleTab is only active when tab is visible. 
-            // Since active is false, we can skip or pass empty string on error.
+            // Self-healing retry check:
+            // If scrape failed and we still have retries remaining, and it is not a captcha block
+            const isCaptcha = message.error && (message.error.includes("captcha") || message.error.includes("Phát hiện captcha"));
+            if (!message.success && request.retryCount < 3 && !isCaptcha) {
+                request.retryCount++;
+                console.log(`[KOC Extension] Scraping failed for ${request.url}. Retrying (${request.retryCount}/3) in 2.5s... Error: ${message.error}`);
+                
+                setTimeout(() => {
+                    chrome.tabs.update(tabId, { url: request.url }, () => {
+                        if (chrome.runtime.lastError) {
+                            console.error("[KOC Extension] Failed to reload tab for retry:", chrome.runtime.lastError.message);
+                        }
+                    });
+                }, 2500);
+                return; // Do not send finished message yet!
+            }
+
+            // Capture the screenshot of the active tab
             chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }, (dataUrl) => {
                 const error = chrome.runtime.lastError;
                 const screenshot = error ? "" : dataUrl;

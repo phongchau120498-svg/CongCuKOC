@@ -21,12 +21,23 @@ function parseViews(viewStr) {
 
 // Wait helper
 async function waitForElements(selector, minCount, timeout) {
-    const start = Date.now();
+    let start = Date.now();
     while (Date.now() - start < timeout) {
         const elements = document.querySelectorAll(selector);
         if (elements.length >= minCount) {
             return elements;
         }
+        
+        // If captcha is detected, reset start time to prevent timeout and reloading
+        const hasCaptcha = document.querySelector('.captcha_verify_container') || 
+                           document.querySelector('#captcha-verify-image') ||
+                           document.body.innerText.includes("Verification") ||
+                           document.body.innerText.includes("captcha");
+                           
+        if (hasCaptcha) {
+            start = Date.now(); // reset timer
+        }
+
         await new Promise(r => setTimeout(r, 200));
     }
     return document.querySelectorAll(selector);
@@ -109,9 +120,8 @@ async function scrapeTikTokViews() {
     // 2. Fallback: DOM scraping method
     console.log("[KOC Extension] JSON parse empty or failed, falling back to DOM scraping...");
     
-    // Wait for the video views to load. If captcha is shown, this loop keeps running
-    // giving the user time to solve it. Once solved, elements will appear and it will proceed.
-    const elements = await waitForElements('[data-e2e="video-views"]', 10, 30000);
+    // Wait for the video views to load. Timeout is fast (8s) if no captcha is shown.
+    const elements = await waitForElements('[data-e2e="video-views"]', 10, 8000);
     
     if (elements.length < 4) {
         // Check if we are stuck on a verification page
