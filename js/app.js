@@ -105,6 +105,13 @@
             });
         }
 
+        function closeScrapeTabViaExtension() {
+            window.postMessage({
+                type: "FROM_PAGE",
+                action: "CLOSE_SCRAPE_TAB"
+            }, "*");
+        }
+
         window.addEventListener("message", (event) => {
             if (event.data && event.data.type === "TO_PAGE") {
                 const result = event.data.data;
@@ -1056,6 +1063,10 @@
                     return;
                 }
                 stopBatchProcessing();
+            } else {
+                if (window.__KOC_EXTENSION_ACTIVE__) {
+                    closeScrapeTabViaExtension();
+                }
             }
             document.getElementById('batchCaptureModal').style.display = 'none';
         }
@@ -1181,6 +1192,11 @@
             document.getElementById('batchProgressText').textContent = `Hoàn thành! Đã chụp ${successCount}/${total} link thành công.`;
             showToast(`Hoàn thành chụp hàng loạt. Thành công ${successCount}/${total}`, 'success');
 
+            // Close the scraping tab when batch finishes
+            if (window.__KOC_EXTENSION_ACTIVE__) {
+                closeScrapeTabViaExtension();
+            }
+
             // Auto-download file when batch capturing is fully done
             if (successCount > 0 && !batchCancelRequested) {
                 setTimeout(() => {
@@ -1196,6 +1212,10 @@
             document.getElementById('startBatchBtn').style.display = 'block';
             document.getElementById('stopBatchBtn').style.display = 'none';
             document.getElementById('batchProgressText').textContent = 'Tiến trình đã bị dừng bởi người dùng.';
+            
+            if (window.__KOC_EXTENSION_ACTIVE__) {
+                closeScrapeTabViaExtension();
+            }
         }
 
         // Open Screenshots Folder in OS File Manager
