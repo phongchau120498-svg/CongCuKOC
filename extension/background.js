@@ -130,11 +130,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 return; // Do not send finished message yet!
             }
 
-            // Capture the screenshot of the active tab
-            chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }, (dataUrl) => {
-                const error = chrome.runtime.lastError;
-                const screenshot = error ? "" : dataUrl;
-                
+            const sendResult = (screenshot) => {
                 chrome.tabs.sendMessage(request.senderTabId, {
                     action: "SCRAPE_FINISHED",
                     index: request.index,
@@ -146,9 +142,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     screenshotUrl: screenshot,
                     error: message.error
                 });
-                
                 delete pendingRequests[tabId];
-            });
+            };
+
+            // Optimization: Only capture screenshots for "Đạt" (Passed) channels (viewSum >= 1500)
+            const isDat = message.success && message.viewSum >= 1500;
+            if (isDat) {
+                // Focus the scraping tab to take screenshot
+                chrome.tabs.update(tabId, { active: true }, (focusedTab) => {
+                    if (chrome.runtime.lastError || !focusedTab) {
+                        sendResult("");
+                        return;
+                    }
+                    
+                    // Wait for tab focus rendering paint
+                    setTimeout(() => {
+                        chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }, (dataUrl) => {
+                            const error = chrome.runtime.lastError;
+                            const screenshot = error ? "" : dataUrl;
+                            
+                            // Restore focus back to main page tab instantly
+                            chrome.tabs.update(request.senderTabId, { active: true }, () => {
+                                chrome.runtime.lastError; // silence errors if page was closed
+                            });
+                            
+                            sendResult(screenshot);
+                        });
+                    }, 400);
+                });
+            } else {
+                // Skip screenshot entirely for failed or "Không Đạt" channels to stay quiet in the background
+                sendResult("");
+            }
         }
     } else if (message.action === "CLOSE_SCRAPE_TAB") {
         for (const workerId in workerTabs) {
