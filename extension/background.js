@@ -1,6 +1,7 @@
 let workerTabs = {}; // workerId -> tabId
 let pendingRequests = {}; // tabId -> request details
 let screenshotInProgress = {}; // tabId -> boolean
+let screenshotTabId = null; // dedicated screenshot tab
 
 // Setup dynamic rules to block heavy assets on TikTok
 function setupTikTokBlockingRules() {
@@ -112,7 +113,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         };
 
-        // Delay loading the next URL if this tab is currently busy taking a screenshot or in cooldown
+        // Delay loading the next URL if this tab is currently in a cooldown state
         if (targetTabId && screenshotInProgress[targetTabId]) {
             setTimeout(executeUpdate, 500);
         } else {
@@ -124,7 +125,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         
         if (request) {
             // Self-healing retry check:
-            // If scrape failed and we still have retries remaining, and it is not a captcha block
             const isCaptcha = message.error && (message.error.includes("captcha") || message.error.includes("Phát hiện captcha"));
             if (!message.success && request.retryCount < 3 && !isCaptcha) {
                 request.retryCount++;
@@ -157,59 +157,86 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 success: message.success,
                 viewSum: message.viewSum,
                 views: message.views,
-                screenshotUrl: "", // initially empty, updated asynchronously
+                screenshotUrl: "", // initially empty, captured separately in queue
                 error: message.error
             });
 
             // Clean up request from pending queue
             delete pendingRequests[tabId];
 
-            // 2. Set screenshotInProgress to true to enforce a cooldown delay on this tab
+            // 2. Set screenshotInProgress to true to enforce a cooldown delay on this scraping tab (1.2s)
             screenshotInProgress[tabId] = true;
+            setTimeout(() => {
+                screenshotInProgress[tabId] = false;
+            }, 1200);
+        }
+    } else if (message.action === "CAPTURE_SCREENSHOT_ONLY") {
+        const senderTabId = sender.tab.id;
+        const url = message.url;
+        const index = message.index;
+        const tabType = message.tabType;
 
-            // Asynchronously capture the screenshot if Passed ("Đạt")
-            const isDat = message.success && message.viewSum >= 1500;
-            if (isDat) {
-                // Focus the scraping tab to take screenshot
+        const takeScreenshot = (tabId) => {
+            // Wait 3.5 seconds for the TikTok page to render fully at a relaxed pace
+            setTimeout(() => {
+                // Focus the screenshot tab to capture
                 chrome.tabs.update(tabId, { active: true }, (focusedTab) => {
                     if (chrome.runtime.lastError || !focusedTab) {
-                        screenshotInProgress[tabId] = false;
+                        chrome.tabs.sendMessage(senderTabId, {
+                            action: "UPDATE_SCREENSHOT",
+                            index: index,
+                            tabType: tabType,
+                            screenshotUrl: ""
+                        });
                         return;
                     }
                     
-                    // Wait for focus paint
+                    // Wait 500ms for active focus paint
                     setTimeout(() => {
                         chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }, (dataUrl) => {
                             const error = chrome.runtime.lastError;
                             
                             // Send screenshot update to page
-                            if (!error && dataUrl) {
-                                chrome.tabs.sendMessage(senderTabId, {
-                                    action: "UPDATE_SCREENSHOT",
-                                    index: index,
-                                    tabType: tabType,
-                                    screenshotUrl: dataUrl
-                                });
-                            }
+                            chrome.tabs.sendMessage(senderTabId, {
+                                action: "UPDATE_SCREENSHOT",
+                                index: index,
+                                tabType: tabType,
+                                screenshotUrl: error ? "" : dataUrl
+                            });
                             
                             // Restore focus back to main page tab instantly
                             chrome.tabs.update(senderTabId, { active: true }, () => {
                                 chrome.runtime.lastError; // silence errors if page closed
                             });
-                            
-                            // 1.0 second cooldown post-screenshot before tab is reusable
-                            setTimeout(() => {
-                                screenshotInProgress[tabId] = false;
-                            }, 1000);
                         });
-                    }, 400);
+                    }, 500);
                 });
-            } else {
-                // Enforce a 1.5s cooldown delay for failed/rejected channels to stabilize transition speed
-                setTimeout(() => {
-                    screenshotInProgress[tabId] = false;
-                }, 1500);
-            }
+            }, 3500);
+        };
+
+        if (screenshotTabId !== undefined && screenshotTabId !== null) {
+            chrome.tabs.update(screenshotTabId, { url: url, active: false }, (tab) => {
+                if (chrome.runtime.lastError || !tab) {
+                    chrome.tabs.create({ url: url, active: false }, (newTab) => {
+                        screenshotTabId = newTab.id;
+                        takeScreenshot(newTab.id);
+                    });
+                } else {
+                    takeScreenshot(screenshotTabId);
+                }
+            });
+        } else {
+            chrome.tabs.create({ url: url, active: false }, (newTab) => {
+                screenshotTabId = newTab.id;
+                takeScreenshot(newTab.id);
+            });
+        }
+    } else if (message.action === "CLOSE_SCREENSHOT_TAB") {
+        if (screenshotTabId) {
+            chrome.tabs.remove(screenshotTabId, () => {
+                chrome.runtime.lastError;
+            });
+            screenshotTabId = null;
         }
     } else if (message.action === "CLOSE_SCRAPE_TAB") {
         for (const workerId in workerTabs) {
@@ -222,5 +249,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         }
         workerTabs = {};
         screenshotInProgress = {};
+        
+        if (screenshotTabId) {
+            chrome.tabs.remove(screenshotTabId, () => {
+                chrome.runtime.lastError;
+            });
+            screenshotTabId = null;
+        }
     }
 });

@@ -113,6 +113,54 @@
             }, "*");
         }
 
+        let screenshotQueue = [];
+        let screenshotWorkerRunning = false;
+        let activeScreenshotResolvers = {};
+
+        function queueScreenshot(link, absoluteIndex, tableType) {
+            screenshotQueue.push({ link, absoluteIndex, tableType });
+            if (!screenshotWorkerRunning) {
+                processNextScreenshot();
+            }
+        }
+
+        async function processNextScreenshot() {
+            if (screenshotQueue.length === 0) {
+                screenshotWorkerRunning = false;
+                window.postMessage({
+                    type: "FROM_PAGE",
+                    action: "CLOSE_SCREENSHOT_TAB"
+                }, "*");
+                return;
+            }
+
+            screenshotWorkerRunning = true;
+            const task = screenshotQueue.shift();
+
+            if (batchCancelRequested) {
+                screenshotQueue = [];
+                screenshotWorkerRunning = false;
+                return;
+            }
+
+            await captureScreenshotOnlyViaExtension(task.link, task.absoluteIndex, task.tableType);
+            processNextScreenshot();
+        }
+
+        function captureScreenshotOnlyViaExtension(link, absoluteIndex, tableType) {
+            return new Promise((resolve) => {
+                activeScreenshotResolvers[absoluteIndex] = resolve;
+                
+                window.postMessage({
+                    type: "FROM_PAGE",
+                    action: "CAPTURE_SCREENSHOT_ONLY",
+                    url: link,
+                    index: absoluteIndex,
+                    tabType: tableType
+                }, "*");
+            });
+        }
+
         window.addEventListener("message", (event) => {
             if (event.data && event.data.type === "TO_PAGE") {
                 const result = event.data.data;
@@ -137,7 +185,14 @@
             
             if (action === "UPDATE_SCREENSHOT") {
                 item.screenshotUrl = screenshotUrl;
+                item.screenshotStatus = 'done';
                 renderTable(tabType);
+                
+                const sResolve = activeScreenshotResolvers[index];
+                if (sResolve) {
+                    delete activeScreenshotResolvers[index];
+                    sResolve();
+                }
                 return;
             }
             
@@ -1139,6 +1194,12 @@
                             if (badge) {
                                 badge.textContent = 'THÀNH CÔNG';
                                 badge.className = 'batch-status-badge success';
+                            }
+
+                            // If extension is active and the channel is Passed ("Đạt"), queue asynchronous screenshot capture
+                            if (isExtensionActive() && !item.isRejected) {
+                                item.screenshotStatus = 'pending';
+                                queueScreenshot(item.link, absoluteIndex, currentBatchType);
                             }
                         } else {
                             if (!batchCancelRequested) {
