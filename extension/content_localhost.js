@@ -1,15 +1,9 @@
-// Inject a variable into the page context to declare the extension is active
-const injectScript = () => {
-    try {
-        const script = document.createElement('script');
-        script.textContent = 'window.__KOC_EXTENSION_ACTIVE__ = true;';
-        (document.head || document.documentElement).appendChild(script);
-        script.remove();
-    } catch (e) {
-        console.error("[KOC Extension] Failed to inject active flag:", e);
-    }
-};
-injectScript();
+// Declare the extension is active by setting a DOM attribute on <html>
+try {
+    document.documentElement.setAttribute('data-koc-extension-active', 'true');
+} catch (e) {
+    console.error("[KOC Extension] Failed to set active attribute:", e);
+}
 
 // Listen to messages from the web page (js/app.js)
 window.addEventListener("message", (event) => {

@@ -87,6 +87,10 @@
         // --- CHROME EXTENSION SCRAPER INTEGRATION ---
         let activeScrapeResolver = null;
 
+        function isExtensionActive() {
+            return document.documentElement.hasAttribute('data-koc-extension-active');
+        }
+
         function scrapeViaExtension(link, absoluteIndex, type) {
             return new Promise((resolve) => {
                 activeScrapeResolver = {
@@ -449,7 +453,7 @@
                 document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth' });
 
                 // Proactive extension scraping auto-trigger
-                if (window.__KOC_EXTENSION_ACTIVE__) {
+                if (isExtensionActive()) {
                     setTimeout(() => {
                         showToast('Đang tự động khởi chạy Extension để cào view hàng loạt cho KOC Chưa Đơn...', 'info');
                         openBatchCaptureModal('unmatch');
@@ -831,7 +835,7 @@
 
         // Check if helper server is active
         async function checkHelperStatus() {
-            if (window.__KOC_EXTENSION_ACTIVE__) {
+            if (isExtensionActive()) {
                 updateHelperStatusUI(true);
                 return;
             }
@@ -857,7 +861,7 @@
             const badge = document.getElementById('helperStatusBadge');
             
             if (dot && text && badge) {
-                if (window.__KOC_EXTENSION_ACTIVE__) {
+                if (isExtensionActive()) {
                     dot.className = 'status-dot green';
                     text.textContent = 'Extension Hoạt động';
                     badge.title = 'Extension KOC đang kích hoạt và sẵn sàng cào view!';
@@ -940,7 +944,7 @@
             renderTable(tableType);
 
             // Extension Scrape Path
-            if (window.__KOC_EXTENSION_ACTIVE__) {
+            if (isExtensionActive()) {
                 await scrapeViaExtension(url, absoluteIndex, tableType);
                 return;
             }
@@ -990,7 +994,7 @@
 
         // Open Batch Capture Modal
         function openBatchCaptureModal(tableType) {
-            if (!isHelperActive && !window.__KOC_EXTENSION_ACTIVE__) {
+            if (!isHelperActive && !isExtensionActive()) {
                 showHelperInstructions();
                 return;
             }
@@ -1064,7 +1068,7 @@
                 }
                 stopBatchProcessing();
             } else {
-                if (window.__KOC_EXTENSION_ACTIVE__) {
+                if (isExtensionActive()) {
                     closeScrapeTabViaExtension();
                 }
             }
@@ -1073,7 +1077,7 @@
 
         // Start Batch Processing Loop
         async function startBatchProcessing() {
-            if (!isHelperActive && !window.__KOC_EXTENSION_ACTIVE__) {
+            if (!isHelperActive && !isExtensionActive()) {
                 showHelperInstructions();
                 return;
             }
@@ -1128,7 +1132,7 @@
 
                 try {
                     let result;
-                    if (window.__KOC_EXTENSION_ACTIVE__) {
+                    if (isExtensionActive()) {
                         const absoluteIndex = sourceData.indexOf(item);
                         result = await scrapeViaExtension(item.link, absoluteIndex, currentBatchType);
                     } else {
@@ -1193,7 +1197,7 @@
             showToast(`Hoàn thành chụp hàng loạt. Thành công ${successCount}/${total}`, 'success');
 
             // Close the scraping tab when batch finishes
-            if (window.__KOC_EXTENSION_ACTIVE__) {
+            if (isExtensionActive()) {
                 closeScrapeTabViaExtension();
             }
 
@@ -1213,7 +1217,7 @@
             document.getElementById('stopBatchBtn').style.display = 'none';
             document.getElementById('batchProgressText').textContent = 'Tiến trình đã bị dừng bởi người dùng.';
             
-            if (window.__KOC_EXTENSION_ACTIVE__) {
+            if (isExtensionActive()) {
                 closeScrapeTabViaExtension();
             }
         }
