@@ -19,13 +19,21 @@ function parseViews(viewStr) {
     return isNaN(num) ? 0 : Math.round(num * multiplier);
 }
 
-// Wait helper
+// Wait helper - optimized to resolve smaller channels instantly when page completes loading
 async function waitForElements(selector, minCount, timeout) {
     let start = Date.now();
     while (Date.now() - start < timeout) {
         const elements = document.querySelectorAll(selector);
+        
+        // If we found the target count, return immediately
         if (elements.length >= minCount) {
             return elements;
+        }
+        
+        // If the page is fully loaded and we have at least 4 videos, return early after a small settle delay
+        if (elements.length >= 4 && document.readyState === 'complete') {
+            await new Promise(r => setTimeout(r, 1200));
+            return document.querySelectorAll(selector);
         }
         
         // If captcha is detected, reset start time to prevent timeout and reloading
@@ -38,7 +46,7 @@ async function waitForElements(selector, minCount, timeout) {
             start = Date.now(); // reset timer
         }
 
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 250));
     }
     return document.querySelectorAll(selector);
 }
@@ -71,14 +79,14 @@ function extractVideoViewsFromJSON(jsonObj) {
     return playCounts;
 }
 
-// Helper to extract KOC unique username from JSON to validate current page
-function extractUniqueIdFromJSON(jsonObj) {
-    let foundId = null;
+// Check if target username exists inside the JSON to prevent parsing wrong page data
+function hasUniqueIdInJSON(jsonObj, targetUsername) {
+    let found = false;
     function traverse(obj) {
-        if (foundId) return;
+        if (found) return;
         if (!obj || typeof obj !== 'object') return;
-        if (typeof obj.uniqueId === 'string') {
-            foundId = obj.uniqueId;
+        if (typeof obj.uniqueId === 'string' && obj.uniqueId.toLowerCase() === targetUsername) {
+            found = true;
             return;
         }
         for (const key in obj) {
@@ -88,7 +96,7 @@ function extractUniqueIdFromJSON(jsonObj) {
         }
     }
     traverse(jsonObj);
-    return foundId;
+    return found;
 }
 
 // Try parsing user-detail JSON from TikTok's script tags
@@ -106,10 +114,9 @@ function tryExtractViewsFromScriptTags() {
             if (scriptEl && scriptEl.textContent) {
                 const jsonObj = JSON.parse(scriptEl.textContent);
                 
-                // Validate if the JSON data matches the current KOC channel URL
-                const jsonUsername = extractUniqueIdFromJSON(jsonObj)?.toLowerCase();
-                if (urlUsername && jsonUsername && jsonUsername !== urlUsername) {
-                    console.warn(`[KOC Extension] JSON username (${jsonUsername}) does not match URL username (${urlUsername}). Ignoring stale JSON.`);
+                // Validate that the JSON object contains user data for our target KOC username
+                if (urlUsername && !hasUniqueIdInJSON(jsonObj, urlUsername)) {
+                    console.warn(`[KOC Extension] JSON does not contain target username (${urlUsername}). Ignoring stale or recommended user JSON.`);
                     continue;
                 }
 
@@ -151,8 +158,8 @@ async function scrapeTikTokViews() {
     // 2. Fallback: DOM scraping method
     console.log("[KOC Extension] JSON parse empty or failed, falling back to DOM scraping...");
     
-    // Wait for the video views to load. Timeout is fast (8s) if no captcha is shown.
-    const elements = await waitForElements('[data-e2e="video-views"]', 10, 8000);
+    // Wait for the video views to load. Extended timeout (15s) for slower loaded tabs
+    const elements = await waitForElements('[data-e2e="video-views"]', 10, 15000);
     
     if (elements.length < 4) {
         // Check if we are stuck on a verification page
