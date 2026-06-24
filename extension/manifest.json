@@ -13,6 +13,7 @@
     "http://localhost:*/*",
     "http://127.0.0.1/*",
     "http://127.0.0.1:*/*",
+    "https://phongchau120498-svg.github.io/*",
     "file:///*"
   ],
   "background": {
@@ -25,6 +26,7 @@
         "http://localhost:*/*",
         "http://127.0.0.1/*",
         "http://127.0.0.1:*/*",
+        "https://phongchau120498-svg.github.io/*",
         "file:///*"
       ],
       "js": ["content_localhost.js"],

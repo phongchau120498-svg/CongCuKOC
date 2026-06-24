@@ -1,7 +1,7 @@
 {
   "name": "cong-cu-koc-screenshot-helper",
   "version": "1.0.0",
-  "description": "Backend helper to take screenshots of TikTok profiles for CongCuKOC",
+  "description": "Backend helper to serve CongCuKOC web app",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,10 +9,6 @@
   },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "puppeteer": "^22.12.0",
-    "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "xlsx": "^0.18.5"
+    "express": "^4.19.2"
   }
 }
