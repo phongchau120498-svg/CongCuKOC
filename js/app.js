@@ -85,26 +85,23 @@
         }
 
         // --- CHROME EXTENSION SCRAPER INTEGRATION ---
-        let activeScrapeResolver = null;
+        let activeScrapeResolvers = {}; // index -> resolve function
 
         function isExtensionActive() {
             return document.documentElement.hasAttribute('data-koc-extension-active');
         }
 
-        function scrapeViaExtension(link, absoluteIndex, type) {
+        function scrapeViaExtension(link, absoluteIndex, type, workerId = 0) {
             return new Promise((resolve) => {
-                activeScrapeResolver = {
-                    index: absoluteIndex,
-                    tabType: type,
-                    resolve: resolve
-                };
+                activeScrapeResolvers[absoluteIndex] = resolve;
                 
                 window.postMessage({
                     type: "FROM_PAGE",
                     action: "SCRAPE_TIKTOK",
                     url: link,
                     index: absoluteIndex,
-                    tabType: type
+                    tabType: type,
+                    workerId: workerId
                 }, "*");
             });
         }
@@ -154,11 +151,12 @@
             renderTable(tabType);
             
             // Resolve promise for batch loop or single action
-            if (activeScrapeResolver && activeScrapeResolver.index === index && activeScrapeResolver.tabType === tabType) {
+            const resolve = activeScrapeResolvers[index];
+            if (resolve) {
                 result.url = screenshotUrl;
                 result.isRejected = viewSum < 1500;
-                activeScrapeResolver.resolve(result);
-                activeScrapeResolver = null;
+                delete activeScrapeResolvers[index];
+                resolve(result);
             }
         }
 
@@ -1108,6 +1106,7 @@
 
             const headless = !document.getElementById('batchHeadful').checked;
             const delayValue = parseInt(document.getElementById('batchDelay').value) * 1000 || 4000;
+            const numThreads = isExtensionActive() ? (parseInt(document.getElementById('batchThreads').value) || 1) : 1;
 
             // Get target list
             let sourceData = [];
@@ -1122,96 +1121,115 @@
             const itemsWithLinks = sourceData.filter(item => item.link && String(item.link).startsWith('http'));
             const total = itemsWithLinks.length;
             let successCount = 0;
+            let completedCount = 0;
+            let currentIndex = 0;
 
-            for (let i = 0; i < total; i++) {
-                if (batchCancelRequested) {
-                    showToast('Đã dừng tiến trình chụp ảnh hàng loạt', 'info');
-                    break;
-                }
+            document.getElementById('batchProgressText').textContent = `Đang khởi chạy ${numThreads} luồng...`;
 
-                const item = itemsWithLinks[i];
-                document.getElementById('batchProgressText').textContent = `Đang xử lý ${i + 1}/${total}: ${item.id || item.valC}...`;
-                
-                // Update batch UI item status
-                const badge = document.getElementById(`batch-badge-${item.id || item.valC}`);
-                if (badge) {
-                    badge.textContent = 'ĐANG CHỤP';
-                    badge.className = 'batch-status-badge running';
-                }
-                const itemDiv = document.getElementById(`batch-item-${item.id || item.valC}`);
-                if (itemDiv) {
-                    itemDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                }
+            const runWorker = async (workerId) => {
+                while (currentIndex < total && !batchCancelRequested) {
+                    const taskIndex = currentIndex++;
+                    if (taskIndex >= total) break;
 
-                // Update original state item status
-                item.screenshotStatus = 'pending';
-                renderTable(currentBatchType);
-
-                try {
-                    let result;
-                    if (isExtensionActive()) {
-                        const absoluteIndex = sourceData.indexOf(item);
-                        result = await scrapeViaExtension(item.link, absoluteIndex, currentBatchType);
-                    } else {
-                        const response = await fetch('http://localhost:3000/api/screenshot', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                                id: item.id || item.valC,
-                                url: item.link,
-                                headless: headless,
-                                delay: delayValue
-                            })
-                        });
-                        result = await response.json();
+                    const item = itemsWithLinks[taskIndex];
+                    
+                    // Update batch UI item status
+                    const badge = document.getElementById(`batch-badge-${item.id || item.valC}`);
+                    if (badge) {
+                        badge.textContent = `LUỒNG ${workerId + 1}`;
+                        badge.className = 'batch-status-badge running';
+                    }
+                    const itemDiv = document.getElementById(`batch-item-${item.id || item.valC}`);
+                    if (itemDiv) {
+                        itemDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                     }
 
-                    if (result.success && !batchCancelRequested) {
-                        item.screenshotStatus = 'done';
-                        item.screenshotUrl = result.url || result.screenshotUrl;
-                        item.views = result.views;
-                        item.parsedViews = result.parsedViews;
-                        item.viewSum = result.viewSum;
-                        item.isRejected = result.isRejected;
-                        successCount++;
-                        if (badge) {
-                            badge.textContent = 'THÀNH CÔNG';
-                            badge.className = 'batch-status-badge success';
+                    // Update original state item status
+                    item.screenshotStatus = 'pending';
+                    renderTable(currentBatchType);
+
+                    try {
+                        let result;
+                        if (isExtensionActive()) {
+                            const absoluteIndex = sourceData.indexOf(item);
+                            result = await scrapeViaExtension(item.link, absoluteIndex, currentBatchType, workerId);
+                        } else {
+                            const response = await fetch('http://localhost:3000/api/screenshot', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    id: item.id || item.valC,
+                                    url: item.link,
+                                    headless: headless,
+                                    delay: delayValue
+                                })
+                            });
+                            result = await response.json();
                         }
-                    } else {
+
+                        if (result.success && !batchCancelRequested) {
+                            item.screenshotStatus = 'done';
+                            item.screenshotUrl = result.url || result.screenshotUrl;
+                            item.views = result.views;
+                            item.parsedViews = result.parsedViews;
+                            item.viewSum = result.viewSum;
+                            item.isRejected = result.isRejected;
+                            successCount++;
+                            if (badge) {
+                                badge.textContent = 'THÀNH CÔNG';
+                                badge.className = 'batch-status-badge success';
+                            }
+                        } else {
+                            if (!batchCancelRequested) {
+                                item.screenshotStatus = 'error';
+                                item.screenshotError = result.error || 'Lỗi cào view';
+                                if (badge) {
+                                    badge.textContent = 'LỖI';
+                                    badge.className = 'batch-status-badge error';
+                                }
+                            }
+                        }
+                    } catch (err) {
                         if (!batchCancelRequested) {
                             item.screenshotStatus = 'error';
-                            item.screenshotError = result.error || 'Lỗi chụp ảnh';
+                            item.screenshotError = err.message;
                             if (badge) {
-                                badge.textContent = 'LỖI';
+                                badge.textContent = 'LỖI KẾT NỐI';
                                 badge.className = 'batch-status-badge error';
                             }
                         }
                     }
-                } catch (err) {
-                    if (!batchCancelRequested) {
-                        item.screenshotStatus = 'error';
-                        item.screenshotError = err.message;
-                        if (badge) {
-                            badge.textContent = 'LỖI KẾT NỐI';
-                            badge.className = 'batch-status-badge error';
-                        }
-                    }
+
+                    completedCount++;
+                    // Update progress bar
+                    const percent = Math.round((completedCount / total) * 100);
+                    document.getElementById('batchProgressBar').style.width = `${percent}%`;
+                    document.getElementById('batchPercentText').textContent = `${percent}%`;
+                    document.getElementById('batchProgressText').textContent = `Đang xử lý ${completedCount}/${total}...`;
+
+                    renderTable(currentBatchType);
                 }
+            };
 
-                // Update progress bar
-                const percent = Math.round(((i + 1) / total) * 100);
-                document.getElementById('batchProgressBar').style.width = `${percent}%`;
-                document.getElementById('batchPercentText').textContent = `${percent}%`;
-
-                renderTable(currentBatchType);
+            // Spawn workers
+            const workers = [];
+            for (let w = 0; w < numThreads; w++) {
+                workers.push(runWorker(w));
             }
+            
+            // Wait for all workers to complete
+            await Promise.all(workers);
 
             batchProcessingActive = false;
             document.getElementById('startBatchBtn').style.display = 'block';
             document.getElementById('stopBatchBtn').style.display = 'none';
-            document.getElementById('batchProgressText').textContent = `Hoàn thành! Đã chụp ${successCount}/${total} link thành công.`;
-            showToast(`Hoàn thành chụp hàng loạt. Thành công ${successCount}/${total}`, 'success');
+            
+            if (batchCancelRequested) {
+                document.getElementById('batchProgressText').textContent = `Đã dừng tiến trình. Thành công ${successCount}/${total}.`;
+            } else {
+                document.getElementById('batchProgressText').textContent = `Hoàn thành! Đã cào ${successCount}/${total} kênh thành công.`;
+                showToast(`Hoàn thành cào view hàng loạt. Thành công ${successCount}/${total}`, 'success');
+            }
 
             // Close the scraping tab when batch finishes
             if (isExtensionActive()) {

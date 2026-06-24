@@ -480,17 +480,21 @@
             </div>
             <div class="modal-body">
                 <!-- Config Panel -->
-                <div style="background: var(--bg-canvas); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                <div style="background: var(--bg-canvas); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem;">
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                         <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Chế độ chụp:</label>
                         <label class="checkbox-container" style="padding-left: 2rem; font-size: 0.8rem; margin: 0;">
                             Hiển thị trình duyệt (Để tự giải captcha)
-                            <input type="checkbox" id="batchHeadful">
+                            <input type="checkbox" id="batchHeadful" checked>
                             <span class="checkmark" style="top: -2px;"></span>
                         </label>
                     </div>
                     <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                        <label for="batchDelay" style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Độ trễ sau khi load trang (giây):</label>
+                        <label for="batchThreads" style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Số luồng cào song song:</label>
+                        <input type="number" id="batchThreads" class="input-small" value="1" style="width: 80px; text-align: left;" min="1" max="5">
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <label for="batchDelay" style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Độ trễ khi dùng Helper (giây):</label>
                         <input type="number" id="batchDelay" class="input-small" value="4" style="width: 80px; text-align: left;" min="1" max="30">
                     </div>
                 </div>
