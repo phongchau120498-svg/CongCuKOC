@@ -742,40 +742,6 @@
                     linkHtml = item.link;
                 }
 
-                // Render screenshot cell based on status
-                let screenshotHtml = '-';
-                if (item.link && String(item.link).startsWith('http')) {
-                    if (item.screenshotStatus === 'pending') {
-                        screenshotHtml = `<span class="screenshot-loading"><span class="spinner-small"></span> Đang chụp...</span>`;
-                    } else if (item.screenshotStatus === 'done' && item.screenshotUrl) {
-                        screenshotHtml = `
-                            <div class="screenshot-cell">
-                                <img src="${item.screenshotUrl}" class="screenshot-thumb" onclick="openLightbox('${item.screenshotUrl}', '${item.id || item.valC}')" alt="Screenshot">
-                                <button class="btn-action-small" onclick="captureSingle('${item.id || item.valC}', '${item.link}', ${absoluteIndex}, '${type}')" title="Chụp lại">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6M21.94 13a10 10 0 1 1-1.95-6.95L23 10"/></svg>
-                                </button>
-                            </div>
-                        `;
-                    } else if (item.screenshotStatus === 'error') {
-                        screenshotHtml = `
-                            <div class="screenshot-cell">
-                                <span class="badge-error" title="${item.screenshotError || 'Lỗi không xác định'}">Lỗi</span>
-                                <button class="btn-action-small" onclick="captureSingle('${item.id || item.valC}', '${item.link}', ${absoluteIndex}, '${type}')" title="Thử lại">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6M21.94 13a10 10 0 1 1-1.95-6.95L23 10"/></svg>
-                                </button>
-                            </div>
-                        `;
-                    } else {
-                        // idle
-                        screenshotHtml = `
-                            <button class="btn-capture-row" onclick="captureSingle('${item.id || item.valC}', '${item.link}', ${absoluteIndex}, '${type}')">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-                                Chụp
-                            </button>
-                        `;
-                    }
-                }
-
                 if (type === 'unmatch') {
                     let statusHtml = '<span style="color: var(--text-muted);">Chờ cào view</span>';
                     let viewSumHtml = '-';
@@ -800,7 +766,6 @@
                         <td>${linkHtml}</td>
                         <td>${viewSumHtml}</td>
                         <td>${statusHtml}</td>
-                        <td>${screenshotHtml}</td>
                     `;
                 } else { // match & brand have brandsSent column
                     let brandsHtml = '';
@@ -820,7 +785,6 @@
                         <td>${brandsHtml || '<span style="color: var(--text-muted); font-size: 0.75rem;">Trùng nhưng rỗng Brand</span>'}</td>
                         <td>${linkHtml}</td>
                         <td>${viewSumHtml}</td>
-                        <td>${screenshotHtml}</td>
                     `;
                 }
                 tbody.appendChild(tr);
@@ -850,13 +814,15 @@
 
             if (type === 'unmatch') {
                 if (!unmatchedTotalData.length) return;
-                dataToExport = pagination.unmatch.filtered.map(i => ({
-                    "KOC ID": i.id,
-                    "Link TikTok (Cột R)": i.link,
-                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : "",
-                    "Trạng thái": i.viewSum !== undefined ? (i.isRejected ? "LOẠI" : "ĐẠT") : "Chưa cào view",
-                    "Link Ảnh Chụp Kênh": i.screenshotUrl || ""
-                }));
+                dataToExport = pagination.unmatch.filtered.map(i => {
+                    const statusStr = i.viewSum !== undefined ? (i.isRejected ? "LOẠI" : "ĐẠT") : "Chưa cào view";
+                    return {
+                        "KOC ID": i.id,
+                        "Link TikTok (Cột R)": i.link,
+                        "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : "",
+                        "Trạng thái (Hệ thống loại)": statusStr
+                    };
+                });
                 prefix = "KOC_Chua_Tung_Gui_Don";
             } else if (type === 'brand') {
                 const selectedBrand = document.getElementById('brandSelector').value;
@@ -865,8 +831,7 @@
                     "KOC ID": i.id,
                     "Các Brand Đã Có Đơn": Array.from(i.brandsSent).join(', '),
                     "Link TikTok (Cột R)": i.link,
-                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : "",
-                    "Link Ảnh Chụp Kênh": i.screenshotUrl || ""
+                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : ""
                 }));
                 prefix = `KOC_Thieu_Brand_${selectedBrand}`;
             } else if (type === 'match') {
@@ -875,8 +840,7 @@
                     "KOC ID": i.id,
                     "Các Brand Đã Có Đơn": Array.from(i.brandsSent).join(', '),
                     "Link TikTok (Cột R)": i.link,
-                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : "",
-                    "Link Ảnh Chụp Kênh": i.screenshotUrl || ""
+                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : ""
                 }));
                 prefix = "KOC_Da_Gui_Don";
             }
