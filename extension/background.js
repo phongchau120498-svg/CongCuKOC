@@ -1,5 +1,6 @@
+let workerTabs = {}; // workerId -> tabId
 let pendingRequests = {}; // tabId -> request details
-let screenshotTabId = null; // dedicated screenshot tab
+let screenshotTabId = null;
 
 // Handles messages from content_localhost.js and content_tiktok.js
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -10,45 +11,47 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const tabType = message.tabType;
         const workerId = message.workerId || 0;
 
-        // Force a NEW background tab for each request to completely bypass Chrome's background tab suspension
-        chrome.tabs.create({ url: url, active: false }, (newTab) => {
-            pendingRequests[newTab.id] = {
+        const startScraping = (tabId) => {
+            pendingRequests[tabId] = {
                 senderTabId: senderTabId,
                 index: index,
                 tabType: tabType,
-                url: url,
-                retryCount: 0
+                url: url
             };
-        });
+        };
+
+        const targetTabId = workerTabs[workerId];
+
+        // Tối ưu bằng việc đổi URL trên tab cũ thay vì đóng mở tab mới
+        if (targetTabId !== undefined && targetTabId !== null) {
+            chrome.tabs.update(targetTabId, { url: url, active: false }, (tab) => {
+                if (chrome.runtime.lastError || !tab) {
+                    chrome.tabs.create({ url: url, active: false }, (newTab) => {
+                        workerTabs[workerId] = newTab.id;
+                        startScraping(newTab.id);
+                    });
+                } else {
+                    startScraping(targetTabId);
+                }
+            });
+        } else {
+            chrome.tabs.create({ url: url, active: false }, (newTab) => {
+                workerTabs[workerId] = newTab.id;
+                startScraping(newTab.id);
+            });
+        }
     } else if (message.action === "SCRAPE_RESULT") {
         const tabId = sender.tab.id;
         const request = pendingRequests[tabId];
         
         if (request) {
-            // Self-healing retry check:
-            const isCaptcha = message.error && (message.error.includes("captcha") || message.error.includes("Phát hiện captcha"));
-            
-            // Only retry once, and only for temporary network load errors (TIKTOK_ERROR)
-            if (!message.success && request.retryCount < 1 && !isCaptcha && message.error === "TIKTOK_ERROR") {
-                request.retryCount++;
-                console.log(`[KOC Extension] Scraping failed for ${request.url}. Retrying (${request.retryCount}/1) in 1000ms... Error: ${message.error}`);
-                
-                setTimeout(() => {
-                    chrome.tabs.update(tabId, { url: request.url }, () => {
-                        if (chrome.runtime.lastError) {
-                            console.error("[KOC Extension] Failed to reload tab for retry:", chrome.runtime.lastError.message);
-                        }
-                    });
-                }, 1000);
-                return; // Do not resolve yet
-            }
-
+            // Đã xóa hoàn toàn cơ chế reload 3 lần gây lỗi skip link
             const senderTabId = request.senderTabId;
             const index = request.index;
             const tabType = request.tabType;
             const url = request.url;
 
-            // 1. Send the views result immediately to the client page so the worker resolves instantly
+            // Send the views result immediately to the client page
             chrome.tabs.sendMessage(senderTabId, {
                 action: "SCRAPE_FINISHED",
                 index: index,
@@ -57,15 +60,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 success: message.success,
                 viewSum: message.viewSum,
                 views: message.views,
-                screenshotUrl: "", // initially empty, captured separately in queue
+                screenshotUrl: "", 
                 error: message.error
             });
 
-            // 2. Clean up request and close the temporary scraping tab immediately
+            // Clean up request
             delete pendingRequests[tabId];
-            chrome.tabs.remove(tabId, () => {
-                chrome.runtime.lastError; // silence closed errors
-            });
         }
     } else if (message.action === "CAPTURE_SCREENSHOT_ONLY") {
         const senderTabId = sender.tab.id;
@@ -74,9 +74,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const tabType = message.tabType;
 
         const takeScreenshot = (tabId) => {
-            // Wait 3.5 seconds for the TikTok page to render fully at a relaxed pace
             setTimeout(() => {
-                // Focus the screenshot tab to capture
                 chrome.tabs.update(tabId, { active: true }, (focusedTab) => {
                     if (chrome.runtime.lastError || !focusedTab) {
                         chrome.tabs.sendMessage(senderTabId, {
@@ -87,23 +85,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                         });
                         return;
                     }
-                    
-                    // Wait 500ms for active focus paint
                     setTimeout(() => {
                         chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }, (dataUrl) => {
-                            const error = chrome.runtime.lastError;
-                            
-                            // Send screenshot update to page
                             chrome.tabs.sendMessage(senderTabId, {
                                 action: "UPDATE_SCREENSHOT",
                                 index: index,
                                 tabType: tabType,
-                                screenshotUrl: error ? "" : dataUrl
+                                screenshotUrl: chrome.runtime.lastError ? "" : dataUrl
                             });
-                            
-                            // Restore focus back to main page tab instantly
                             chrome.tabs.update(senderTabId, { active: true }, () => {
-                                chrome.runtime.lastError; // silence errors if page closed
+                                chrome.runtime.lastError;
                             });
                         });
                     }, 500);
@@ -136,15 +127,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             screenshotTabId = null;
         }
     } else if (message.action === "CLOSE_SCRAPE_TAB") {
-        // Close all pending scraping tabs
-        for (const tabIdStr in pendingRequests) {
-            const tabId = parseInt(tabIdStr);
-            if (!isNaN(tabId)) {
+        for (const workerId in workerTabs) {
+            const tabId = workerTabs[workerId];
+            if (tabId) {
                 chrome.tabs.remove(tabId, () => {
                     chrome.runtime.lastError;
                 });
             }
         }
+        workerTabs = {};
         pendingRequests = {};
         
         if (screenshotTabId) {

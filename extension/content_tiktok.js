@@ -33,42 +33,36 @@ function parseViews(viewStr) {
     return isNaN(num) ? 0 : Math.round(num * multiplier);
 }
 
-// Wait helper
-async function waitForElements(selectors, minCount, timeout) {
+// Ultra fast instant grab DOM wait helper
+async function instantWaitForElements(selectors, minCount, timeout) {
     let start = Date.now();
     while (Date.now() - start < timeout) {
         let bestElements = [];
         
+        // Scan elements
         for (const selector of selectors) {
             const found = document.querySelectorAll(selector);
+            // Instant grab: as soon as the target amount shows up, return instantly!
             if (found.length >= minCount) return found;
             if (found.length > bestElements.length) bestElements = found;
         }
         
+        // Error screens handling
         const hasErrorScreen = document.body.innerText.includes("Đã xảy ra lỗi") || 
                                document.body.innerText.includes("Vui lòng thử lại sau.") ||
                                document.body.innerText.includes("Something went wrong");
         if (hasErrorScreen) return [];
 
-        if (bestElements.length >= 4 && document.readyState === 'complete') {
-            await new Promise(r => setTimeout(r, 1200));
-            for (const selector of selectors) {
-                const found = document.querySelectorAll(selector);
-                if (found.length >= 4) return found;
-            }
-            return bestElements;
-        }
-        
         const hasCaptcha = document.querySelector('.captcha_verify_container') || 
                            document.querySelector('#captcha-verify-image') ||
                            document.body.innerText.includes("Verification") ||
                            document.body.innerText.includes("captcha");
                            
-        if (hasCaptcha) start = Date.now();
+        if (hasCaptcha) start = Date.now(); // Reset timer if captcha blocks view
 
-        await new Promise(r => setTimeout(r, 250));
+        await new Promise(r => setTimeout(r, 200)); // Check every 200ms
     }
-    return [];
+    return []; // Return empty if timeout
 }
 
 // JSON Extractor
@@ -114,48 +108,6 @@ function extractVideoViewsFromJSON(jsonObj) {
         }
     });
     
-    // Fallback general traverse if list structured check was empty
-    if (playCounts.length < 4) {
-        seenIds.clear();
-        playCounts.length = 0;
-        let dummyIdCounter = 0;
-        
-        function generalTraverse(obj, depth = 0) {
-            if (!obj || typeof obj !== 'object' || depth > 8) return;
-            
-            if (obj.stats && typeof obj.stats.playCount !== 'undefined') {
-                const play = parseInt(obj.stats.playCount);
-                if (!isNaN(play)) {
-                    const id = obj.id || (obj.video && obj.video.id) || `dummy_${dummyIdCounter++}`;
-                    if (!seenIds.has(id)) {
-                        seenIds.add(id);
-                        playCounts.push(play);
-                    }
-                }
-                return;
-            }
-            
-            if (typeof obj.playCount !== 'undefined' && obj.id) {
-                const play = parseInt(obj.playCount);
-                if (!isNaN(play)) {
-                    if (!seenIds.has(obj.id)) {
-                        seenIds.add(obj.id);
-                        playCounts.push(play);
-                    }
-                }
-                return;
-            }
-            
-            for (const key in obj) {
-                if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                    generalTraverse(obj[key], depth + 1);
-                }
-            }
-        }
-        
-        generalTraverse(jsonObj);
-    }
-    
     return playCounts;
 }
 
@@ -200,7 +152,7 @@ async function scrapeTikTokViews() {
     // JSON EXTRACTOR: Does NOT require the tab to be visible on screen!
     let jsonViews = tryExtractViewsFromScriptTags();
     if (!jsonViews) {
-        await new Promise(r => setTimeout(r, 1500));
+        await new Promise(r => setTimeout(r, 1000));
         jsonViews = tryExtractViewsFromScriptTags();
     }
 
@@ -218,7 +170,7 @@ async function scrapeTikTokViews() {
         return;
     }
     
-    // DOM EXTRACTOR: Fallback. (Note: May fail in background tabs due to IntersectionObserver suspension)
+    // DOM EXTRACTOR: Instant Grab Logic (Wait max 25 seconds)
     console.log("[KOC Extension] JSON parse empty or failed, falling back to DOM scraping...");
     
     const targetSelectors = [
@@ -227,7 +179,9 @@ async function scrapeTikTokViews() {
         '.video-count',
         '[class*="video-count"]'
     ];
-    const elements = await waitForElements(targetSelectors, 10, 15000);
+    
+    // 10 videos max, up to 25 seconds wait time
+    const elements = await instantWaitForElements(targetSelectors, 10, 25000); 
     
     if (elements.length < 4) {
         const hasCaptcha = document.querySelector('.captcha_verify_container') || 
@@ -247,23 +201,9 @@ async function scrapeTikTokViews() {
         return;
     }
     
-    // Scroll down to trigger lazy loading if any
-    window.scrollTo({ top: 400, behavior: 'smooth' });
-    await new Promise(r => setTimeout(r, 1200));
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-    await new Promise(r => setTimeout(r, 300));
-    
-    let finalElements = [];
-    for (const selector of targetSelectors) {
-        const found = document.querySelectorAll(selector);
-        if (found.length >= 4) {
-            finalElements = found;
-            break;
-        }
-    }
-    
+    // Lấy liền không chờ đợi (Instant Parse)
     const views = [];
-    finalElements.forEach(el => {
+    elements.forEach(el => {
         const text = el.textContent.trim();
         views.push(parseViews(text));
     });
