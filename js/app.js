@@ -441,6 +441,17 @@
                 // Smooth scroll to results
                 document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth' });
 
+                // Proactive extension scraping auto-trigger
+                if (window.__KOC_EXTENSION_ACTIVE__) {
+                    setTimeout(() => {
+                        showToast('Đang tự động khởi chạy Extension để cào view hàng loạt cho KOC Chưa Đơn...', 'info');
+                        openBatchCaptureModal('unmatch');
+                        setTimeout(() => {
+                            startBatchProcessing();
+                        }, 1000);
+                    }, 1000);
+                }
+
             } catch (error) {
                 console.error(error);
                 document.getElementById('loading').style.display = 'none';
@@ -564,7 +575,7 @@
             const tbody = document.querySelector('#brandTable tbody');
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="5" class="empty-state">
+                    <td colspan="6" class="empty-state">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
                         </svg>
@@ -681,24 +692,29 @@
                 }
 
                 if (type === 'unmatch') {
-                    let badgeHtml = '';
-                    if (item.viewSum !== undefined) {
+                    let statusHtml = '<span style="color: var(--text-muted);">Chờ cào view</span>';
+                    let viewSumHtml = '-';
+                    
+                    if (item.screenshotStatus === 'pending') {
+                        statusHtml = '<span class="status-dot-text"><span class="status-dot yellow"></span> Đang cào...</span>';
+                    } else if (item.screenshotStatus === 'error') {
+                        statusHtml = `<span class="status-dot-text" title="${item.screenshotError || 'Lỗi cào view'}"><span class="status-dot red"></span> Lỗi</span>`;
+                    } else if (item.viewSum !== undefined) {
                         const sumFormatted = formatViewCount(item.viewSum);
+                        viewSumHtml = `<span style="font-weight:600; color:var(--text-main);" title="Chi tiết: ${item.views ? item.views.slice(0, 10).join(', ') : ''}">${sumFormatted}</span>`;
                         if (item.isRejected) {
-                            badgeHtml = `<span class="badge-reject" title="Tổng 7 video (từ video thứ 4): ${item.viewSum}">LOẠI (${sumFormatted})</span>`;
+                            statusHtml = `<span class="badge-reject">LOẠI</span>`;
                         } else {
-                            badgeHtml = `<span class="badge-accept" title="Tổng 7 video (từ video thứ 4): ${item.viewSum}">ĐẠT (${sumFormatted})</span>`;
+                            statusHtml = `<span class="badge-accept">ĐẠT</span>`;
                         }
                     }
+                    
                     tr.innerHTML = `
                         <td>${stt}</td>
-                        <td style="font-weight: 600;">
-                            <div style="display:flex; flex-direction:column; gap:0.25rem;">
-                                <span>${item.id || '-'}</span>
-                                ${badgeHtml}
-                            </div>
-                        </td>
+                        <td style="font-weight: 600;">${item.id || '-'}</td>
                         <td>${linkHtml}</td>
+                        <td>${viewSumHtml}</td>
+                        <td>${statusHtml}</td>
                         <td>${screenshotHtml}</td>
                     `;
                 } else { // match & brand have brandsSent column
@@ -708,11 +724,17 @@
                             brandsHtml += `<span class="badge-brand">${brand}</span>`;
                         });
                     }
+                    let viewSumHtml = '-';
+                    if (item.viewSum !== undefined) {
+                        const sumFormatted = formatViewCount(item.viewSum);
+                        viewSumHtml = `<span style="font-weight:600; color:var(--text-main);">${sumFormatted}</span>`;
+                    }
                     tr.innerHTML = `
                         <td>${stt}</td>
                         <td style="font-weight: 600;">${item.id || '-'}</td>
                         <td>${brandsHtml || '<span style="color: var(--text-muted); font-size: 0.75rem;">Trùng nhưng rỗng Brand</span>'}</td>
                         <td>${linkHtml}</td>
+                        <td>${viewSumHtml}</td>
                         <td>${screenshotHtml}</td>
                     `;
                 }
@@ -745,7 +767,10 @@
                 if (!unmatchedTotalData.length) return;
                 dataToExport = pagination.unmatch.filtered.map(i => ({
                     "KOC ID": i.id,
-                    "Link TikTok (Cột R)": i.link
+                    "Link TikTok (Cột R)": i.link,
+                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : "",
+                    "Trạng thái": i.viewSum !== undefined ? (i.isRejected ? "LOẠI" : "ĐẠT") : "Chưa cào view",
+                    "Link Ảnh Chụp Kênh": i.screenshotUrl || ""
                 }));
                 prefix = "KOC_Chua_Tung_Gui_Don";
             } else if (type === 'brand') {
@@ -754,7 +779,9 @@
                 dataToExport = pagination.brand.filtered.map(i => ({
                     "KOC ID": i.id,
                     "Các Brand Đã Có Đơn": Array.from(i.brandsSent).join(', '),
-                    "Link TikTok (Cột R)": i.link
+                    "Link TikTok (Cột R)": i.link,
+                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : "",
+                    "Link Ảnh Chụp Kênh": i.screenshotUrl || ""
                 }));
                 prefix = `KOC_Thieu_Brand_${selectedBrand}`;
             } else if (type === 'match') {
@@ -762,7 +789,9 @@
                 dataToExport = pagination.match.filtered.map(i => ({
                     "KOC ID": i.id,
                     "Các Brand Đã Có Đơn": Array.from(i.brandsSent).join(', '),
-                    "Link TikTok (Cột R)": i.link
+                    "Link TikTok (Cột R)": i.link,
+                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : "",
+                    "Link Ảnh Chụp Kênh": i.screenshotUrl || ""
                 }));
                 prefix = "KOC_Da_Gui_Don";
             }
@@ -1151,6 +1180,14 @@
             document.getElementById('stopBatchBtn').style.display = 'none';
             document.getElementById('batchProgressText').textContent = `Hoàn thành! Đã chụp ${successCount}/${total} link thành công.`;
             showToast(`Hoàn thành chụp hàng loạt. Thành công ${successCount}/${total}`, 'success');
+
+            // Auto-download file when batch capturing is fully done
+            if (successCount > 0 && !batchCancelRequested) {
+                setTimeout(() => {
+                    showToast('Đang tự động tải về file Excel kết quả...', 'success');
+                    downloadTableData(currentBatchType);
+                }, 1500);
+            }
         }
 
         function stopBatchProcessing() {
