@@ -112,9 +112,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         };
 
-        // Delay loading the next URL if this tab is currently focused and taking a screenshot
+        // Delay loading the next URL if this tab is currently busy taking a screenshot or in cooldown
         if (targetTabId && screenshotInProgress[targetTabId]) {
-            setTimeout(executeUpdate, 450);
+            setTimeout(executeUpdate, 500);
         } else {
             executeUpdate();
         }
@@ -161,11 +161,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             // Clean up request from pending queue
             delete pendingRequests[tabId];
 
-            // 2. Asynchronously capture the screenshot if Passed ("Đạt")
+            // 2. Set screenshotInProgress to true to enforce a cooldown delay on this tab
+            screenshotInProgress[tabId] = true;
+
+            // Asynchronously capture the screenshot if Passed ("Đạt")
             const isDat = message.success && message.viewSum >= 1500;
             if (isDat) {
-                screenshotInProgress[tabId] = true;
-                
                 // Focus the scraping tab to take screenshot
                 chrome.tabs.update(tabId, { active: true }, (focusedTab) => {
                     if (chrome.runtime.lastError || !focusedTab) {
@@ -193,10 +194,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                                 chrome.runtime.lastError; // silence errors if page closed
                             });
                             
-                            screenshotInProgress[tabId] = false;
+                            // 1.0 second cooldown post-screenshot before tab is reusable
+                            setTimeout(() => {
+                                screenshotInProgress[tabId] = false;
+                            }, 1000);
                         });
                     }, 400);
                 });
+            } else {
+                // Enforce a 1.5s cooldown delay for failed/rejected channels to stabilize transition speed
+                setTimeout(() => {
+                    screenshotInProgress[tabId] = false;
+                }, 1500);
             }
         }
     } else if (message.action === "CLOSE_SCRAPE_TAB") {

@@ -71,6 +71,26 @@ function extractVideoViewsFromJSON(jsonObj) {
     return playCounts;
 }
 
+// Helper to extract KOC unique username from JSON to validate current page
+function extractUniqueIdFromJSON(jsonObj) {
+    let foundId = null;
+    function traverse(obj) {
+        if (foundId) return;
+        if (!obj || typeof obj !== 'object') return;
+        if (typeof obj.uniqueId === 'string') {
+            foundId = obj.uniqueId;
+            return;
+        }
+        for (const key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                traverse(obj[key]);
+            }
+        }
+    }
+    traverse(jsonObj);
+    return foundId;
+}
+
 // Try parsing user-detail JSON from TikTok's script tags
 function tryExtractViewsFromScriptTags() {
     try {
@@ -79,12 +99,23 @@ function tryExtractViewsFromScriptTags() {
             document.getElementById('SIGI_STATE')
         ];
         
+        // Get expected KOC username from current URL
+        const urlUsername = window.location.href.split('@')[1]?.split('?')[0]?.toLowerCase();
+        
         for (const scriptEl of scripts) {
             if (scriptEl && scriptEl.textContent) {
                 const jsonObj = JSON.parse(scriptEl.textContent);
+                
+                // Validate if the JSON data matches the current KOC channel URL
+                const jsonUsername = extractUniqueIdFromJSON(jsonObj)?.toLowerCase();
+                if (urlUsername && jsonUsername && jsonUsername !== urlUsername) {
+                    console.warn(`[KOC Extension] JSON username (${jsonUsername}) does not match URL username (${urlUsername}). Ignoring stale JSON.`);
+                    continue;
+                }
+
                 const playCounts = extractVideoViewsFromJSON(jsonObj);
                 if (playCounts && playCounts.length >= 4) {
-                    console.log("[KOC Extension] Successfully extracted views from JSON script tag:", playCounts);
+                    console.log("[KOC Extension] Successfully extracted views from validated JSON script tag:", playCounts);
                     return playCounts;
                 }
             }
