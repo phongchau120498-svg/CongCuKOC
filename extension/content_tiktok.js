@@ -30,6 +30,14 @@ async function waitForElements(selector, minCount, timeout) {
             return elements;
         }
         
+        // Check for TikTok error screen ("Đã xảy ra lỗi")
+        const hasErrorScreen = document.body.innerText.includes("Đã xảy ra lỗi") || 
+                               document.body.innerText.includes("Vui lòng thử lại sau.") ||
+                               document.body.innerText.includes("Something went wrong");
+        if (hasErrorScreen) {
+            return []; // fail fast immediately to trigger reload
+        }
+
         // If the page is fully loaded and we have at least 4 videos, return early after a small settle delay
         if (elements.length >= 4 && document.readyState === 'complete') {
             await new Promise(r => setTimeout(r, 1200));
@@ -54,18 +62,28 @@ async function waitForElements(selector, minCount, timeout) {
 // Traversal helper to find video view counts inside JSON Rehydration objects
 function extractVideoViewsFromJSON(jsonObj) {
     const playCounts = [];
+    const seenIds = new Set();
     
     function traverse(obj) {
         if (!obj || typeof obj !== 'object') return;
         
-        // If this represents a video post object containing stats
-        if (obj.stats && typeof obj.stats.playCount !== 'undefined' && (obj.id || obj.desc || obj.createTime)) {
-            const play = parseInt(obj.stats.playCount);
-            if (!isNaN(play)) {
+        // Direct playCount property (standard for some endpoints)
+        if (typeof obj.playCount !== 'undefined' && obj.id) {
+            const play = parseInt(obj.playCount);
+            if (!isNaN(play) && !seenIds.has(obj.id)) {
+                seenIds.add(obj.id);
                 playCounts.push(play);
             }
-            // Avoid traversing deeper inside this specific post object to prevent duplicates
-            return;
+        }
+        
+        // Nested inside stats object (standard for search/details endpoints)
+        if (obj.stats && typeof obj.stats.playCount !== 'undefined') {
+            const play = parseInt(obj.stats.playCount);
+            const id = obj.id || (obj.itemStruct && obj.itemStruct.id) || (obj.video && obj.video.id);
+            if (!isNaN(play) && id && !seenIds.has(id)) {
+                seenIds.add(id);
+                playCounts.push(play);
+            }
         }
         
         for (const key in obj) {
@@ -138,7 +156,13 @@ async function scrapeTikTokViews() {
     console.log("[KOC Extension] Starting views extraction on TikTok...");
     
     // 1. Try to extract views instantly from page JSON script tags
-    const jsonViews = tryExtractViewsFromScriptTags();
+    let jsonViews = tryExtractViewsFromScriptTags();
+    if (!jsonViews) {
+        // Wait 800ms to let page finish loading script tags and retry
+        await new Promise(r => setTimeout(r, 800));
+        jsonViews = tryExtractViewsFromScriptTags();
+    }
+
     if (jsonViews && jsonViews.length >= 4) {
         let viewSum = 0;
         const viewsToSum = jsonViews.slice(3, 10);
@@ -162,15 +186,20 @@ async function scrapeTikTokViews() {
     const elements = await waitForElements('[data-e2e="video-views"]', 10, 15000);
     
     if (elements.length < 4) {
-        // Check if we are stuck on a verification page
+        // Check if we are stuck on a verification page or TikTok error screen
         const hasCaptcha = document.querySelector('.captcha_verify_container') || 
+                           document.querySelector('#captcha-verify-image') ||
                            document.body.innerText.includes("Verification") ||
                            document.body.innerText.includes("captcha");
+                           
+        const hasError = document.body.innerText.includes("Đã xảy ra lỗi") || 
+                         document.body.innerText.includes("Vui lòng thử lại sau.") ||
+                         document.body.innerText.includes("Something went wrong");
                            
         chrome.runtime.sendMessage({
             action: "SCRAPE_RESULT",
             success: false,
-            error: hasCaptcha ? "Phát hiện captcha chưa giải trên tab." : "Không tìm thấy đủ video trên kênh."
+            error: hasError ? "TIKTOK_ERROR" : (hasCaptcha ? "Phát hiện captcha chưa giải trên tab." : "Không tìm thấy đủ video trên kênh.")
         });
         return;
     }

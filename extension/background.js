@@ -128,7 +128,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             const isCaptcha = message.error && (message.error.includes("captcha") || message.error.includes("Phát hiện captcha"));
             if (!message.success && request.retryCount < 3 && !isCaptcha) {
                 request.retryCount++;
-                console.log(`[KOC Extension] Scraping failed for ${request.url}. Retrying (${request.retryCount}/3) in 2.5s... Error: ${message.error}`);
+                const isTiktokError = message.error === "TIKTOK_ERROR";
+                const delay = isTiktokError ? 500 : 2500;
+                
+                console.log(`[KOC Extension] Scraping failed for ${request.url}. Retrying (${request.retryCount}/3) in ${delay}ms... Error: ${message.error}`);
                 
                 setTimeout(() => {
                     chrome.tabs.update(tabId, { url: request.url }, () => {
@@ -136,7 +139,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                             console.error("[KOC Extension] Failed to reload tab for retry:", chrome.runtime.lastError.message);
                         }
                     });
-                }, 2500);
+                }, delay);
                 return; // Do not send finished message yet!
             }
 
