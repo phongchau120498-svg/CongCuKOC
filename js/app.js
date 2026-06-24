@@ -470,11 +470,9 @@
                 // Proactive extension scraping auto-trigger
                 if (isExtensionActive()) {
                     setTimeout(() => {
-                        showToast('Đang tự động khởi chạy Extension để cào view hàng loạt cho KOC Chưa Đơn...', 'info');
-                        openBatchCaptureModal('unmatch');
-                        setTimeout(() => {
-                            startBatchProcessing();
-                        }, 1000);
+                        showToast('Đang tự động khởi chạy cào view hàng loạt bằng 5 luồng cho KOC Chưa Đơn...', 'info');
+                        currentBatchType = 'unmatch';
+                        startBatchProcessing();
                     }, 1000);
                 }
 
@@ -1007,7 +1005,7 @@
             renderTable(tableType);
         }
 
-        // Open Batch Capture Modal
+        // Open Batch Capture Modal (Bypassed modal, directly starts processing)
         function openBatchCaptureModal(tableType) {
             if (!isHelperActive && !isExtensionActive()) {
                 showHelperInstructions();
@@ -1015,65 +1013,7 @@
             }
 
             currentBatchType = tableType;
-            const modal = document.getElementById('batchCaptureModal');
-            modal.style.display = 'flex';
-
-            // Get list of KOCs with links
-            let sourceData = [];
-            if (tableType === 'unmatch') {
-                sourceData = pagination.unmatch.filtered;
-            } else if (tableType === 'match') {
-                sourceData = pagination.match.filtered;
-            } else if (tableType === 'brand') {
-                sourceData = pagination.brand.filtered;
-            }
-
-            const itemsWithLinks = sourceData.filter(item => item.link && String(item.link).startsWith('http'));
-            
-            // Render list inside modal
-            const container = document.getElementById('batchListContainer');
-            container.innerHTML = '';
-
-            if (itemsWithLinks.length === 0) {
-                container.innerHTML = `<div style="padding: 1.5rem; text-align: center; color: var(--text-muted); font-size: 0.85rem;">Không tìm thấy KOC nào có chứa link hợp lệ trong bảng hiện tại!</div>`;
-                document.getElementById('startBatchBtn').disabled = true;
-                document.getElementById('startBatchBtn').style.opacity = '0.5';
-                return;
-            }
-
-            document.getElementById('startBatchBtn').disabled = false;
-            document.getElementById('startBatchBtn').style.opacity = '1';
-
-            itemsWithLinks.forEach(item => {
-                const div = document.createElement('div');
-                div.className = 'batch-item';
-                div.id = `batch-item-${item.id || item.valC}`;
-                
-                let statusLabel = 'Chờ chụp';
-                let badgeClass = 'wait';
-                if (item.screenshotStatus === 'done') {
-                    statusLabel = 'Đã có ảnh';
-                    badgeClass = 'success';
-                }
-
-                div.innerHTML = `
-                    <div class="batch-item-info">
-                        <span style="font-weight:600;">${item.id || '-'}</span>
-                    </div>
-                    <div style="display:flex; align-items:center; gap: 0.5rem;">
-                        <span class="batch-status-badge ${badgeClass}" id="batch-badge-${item.id || item.valC}">${statusLabel}</span>
-                    </div>
-                `;
-                container.appendChild(div);
-            });
-
-            // Reset progress bar
-            document.getElementById('batchProgressBar').style.width = '0%';
-            document.getElementById('batchProgressText').textContent = `Tìm thấy ${itemsWithLinks.length} KOC có link cần chụp.`;
-            document.getElementById('batchPercentText').textContent = '0%';
-            
-            document.getElementById('startBatchBtn').style.display = 'block';
-            document.getElementById('stopBatchBtn').style.display = 'none';
+            startBatchProcessing();
         }
 
         function closeBatchModal() {
@@ -1100,13 +1040,19 @@
             batchProcessingActive = true;
             batchCancelRequested = false;
 
-            document.getElementById('startBatchBtn').style.display = 'none';
-            document.getElementById('stopBatchBtn').style.display = 'block';
-            document.getElementById('openScreenshotsDirBtn').style.display = 'flex';
+            // Show main progress card on page
+            const progressCard = document.getElementById('mainProgressCard');
+            if (progressCard) progressCard.style.display = 'block';
 
-            const headless = !document.getElementById('batchHeadful').checked;
-            const delayValue = parseInt(document.getElementById('batchDelay').value) * 1000 || 4000;
-            const numThreads = isExtensionActive() ? (parseInt(document.getElementById('batchThreads').value) || 1) : 1;
+            if (document.getElementById('startBatchBtn')) document.getElementById('startBatchBtn').style.display = 'none';
+            if (document.getElementById('stopBatchBtn')) document.getElementById('stopBatchBtn').style.display = 'block';
+            if (document.getElementById('openScreenshotsDirBtn')) document.getElementById('openScreenshotsDirBtn').style.display = 'flex';
+
+            const headless = document.getElementById('batchHeadful') ? !document.getElementById('batchHeadful').checked : true;
+            const delayValue = document.getElementById('batchDelay') ? (parseInt(document.getElementById('batchDelay').value) * 1000 || 4000) : 4000;
+            
+            // Default to 5 threads if extension is active
+            const numThreads = isExtensionActive() ? 5 : 1;
 
             // Get target list
             let sourceData = [];
@@ -1120,11 +1066,20 @@
 
             const itemsWithLinks = sourceData.filter(item => item.link && String(item.link).startsWith('http'));
             const total = itemsWithLinks.length;
+            
+            if (total === 0) {
+                showToast('Không tìm thấy KOC nào có link hợp lệ để cào view!', 'warning');
+                batchProcessingActive = false;
+                if (progressCard) progressCard.style.display = 'none';
+                return;
+            }
+
             let successCount = 0;
             let completedCount = 0;
             let currentIndex = 0;
 
-            document.getElementById('batchProgressText').textContent = `Đang khởi chạy ${numThreads} luồng...`;
+            const mainProgressText = document.getElementById('mainProgressText');
+            if (mainProgressText) mainProgressText.textContent = `Đang khởi chạy ${numThreads} luồng cào view tự động...`;
 
             const runWorker = async (workerId) => {
                 while (currentIndex < total && !batchCancelRequested) {
@@ -1203,9 +1158,18 @@
                     completedCount++;
                     // Update progress bar
                     const percent = Math.round((completedCount / total) * 100);
-                    document.getElementById('batchProgressBar').style.width = `${percent}%`;
-                    document.getElementById('batchPercentText').textContent = `${percent}%`;
-                    document.getElementById('batchProgressText').textContent = `Đang xử lý ${completedCount}/${total}...`;
+                    
+                    const progressBar = document.getElementById('mainProgressBar');
+                    if (progressBar) progressBar.style.width = `${percent}%`;
+                    const percentText = document.getElementById('mainPercentText');
+                    if (percentText) percentText.textContent = `${percent}%`;
+                    if (mainProgressText) mainProgressText.textContent = `Đang xử lý ${completedCount}/${total}...`;
+
+                    // Also update modal progress if modal exists
+                    const modalProgressBar = document.getElementById('batchProgressBar');
+                    if (modalProgressBar) modalProgressBar.style.width = `${percent}%`;
+                    const modalPercentText = document.getElementById('batchPercentText');
+                    if (modalPercentText) modalPercentText.textContent = `${percent}%`;
 
                     renderTable(currentBatchType);
                 }
@@ -1221,14 +1185,19 @@
             await Promise.all(workers);
 
             batchProcessingActive = false;
-            document.getElementById('startBatchBtn').style.display = 'block';
-            document.getElementById('stopBatchBtn').style.display = 'none';
+            if (document.getElementById('startBatchBtn')) document.getElementById('startBatchBtn').style.display = 'block';
+            if (document.getElementById('stopBatchBtn')) document.getElementById('stopBatchBtn').style.display = 'none';
             
             if (batchCancelRequested) {
-                document.getElementById('batchProgressText').textContent = `Đã dừng tiến trình. Thành công ${successCount}/${total}.`;
+                if (mainProgressText) mainProgressText.textContent = `Đã dừng tiến trình. Thành công ${successCount}/${total}.`;
             } else {
-                document.getElementById('batchProgressText').textContent = `Hoàn thành! Đã cào ${successCount}/${total} kênh thành công.`;
+                if (mainProgressText) mainProgressText.textContent = `Hoàn thành! Đã cào xong ${successCount}/${total} kênh.`;
                 showToast(`Hoàn thành cào view hàng loạt. Thành công ${successCount}/${total}`, 'success');
+                
+                // Hide card after 5 seconds
+                setTimeout(() => {
+                    if (progressCard) progressCard.style.display = 'none';
+                }, 5000);
             }
 
             // Close the scraping tab when batch finishes

@@ -1,4 +1,4 @@
-let singleScrapeTabId = null;
+let workerTabs = {}; // workerId -> tabId
 let pendingRequests = {}; // tabId -> request details
 
 // Setup dynamic rules to block heavy assets on TikTok
@@ -76,6 +76,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const url = message.url;
         const index = message.index;
         const tabType = message.tabType;
+        const workerId = message.workerId || 0;
 
         const startScraping = (tabId) => {
             pendingRequests[tabId] = {
@@ -86,23 +87,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             };
         };
 
-        if (singleScrapeTabId !== null) {
-            // Try updating the existing tab
-            chrome.tabs.update(singleScrapeTabId, { url: url, active: true }, (tab) => {
+        const targetTabId = workerTabs[workerId];
+
+        // active: false to keep focus on the main application page
+        if (targetTabId !== undefined && targetTabId !== null) {
+            chrome.tabs.update(targetTabId, { url: url, active: false }, (tab) => {
                 if (chrome.runtime.lastError || !tab) {
-                    // Tab was probably closed by user, create a new one
-                    chrome.tabs.create({ url: url, active: true }, (newTab) => {
-                        singleScrapeTabId = newTab.id;
+                    chrome.tabs.create({ url: url, active: false }, (newTab) => {
+                        workerTabs[workerId] = newTab.id;
                         startScraping(newTab.id);
                     });
                 } else {
-                    startScraping(singleScrapeTabId);
+                    startScraping(targetTabId);
                 }
             });
         } else {
-            // Create a new tab
-            chrome.tabs.create({ url: url, active: true }, (newTab) => {
-                singleScrapeTabId = newTab.id;
+            chrome.tabs.create({ url: url, active: false }, (newTab) => {
+                workerTabs[workerId] = newTab.id;
                 startScraping(newTab.id);
             });
         }
@@ -111,12 +112,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const request = pendingRequests[tabId];
         
         if (request) {
-            // Capture the screenshot of the active tab
+            // Note: captureVisibleTab is only active when tab is visible. 
+            // Since active is false, we can skip or pass empty string on error.
             chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" }, (dataUrl) => {
                 const error = chrome.runtime.lastError;
                 const screenshot = error ? "" : dataUrl;
                 
-                // Send result back to localhost tab
                 chrome.tabs.sendMessage(request.senderTabId, {
                     action: "SCRAPE_FINISHED",
                     index: request.index,
@@ -129,16 +130,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                     error: message.error
                 });
                 
-                // Clean up request but keep the tab open for next URL
                 delete pendingRequests[tabId];
             });
         }
     } else if (message.action === "CLOSE_SCRAPE_TAB") {
-        if (singleScrapeTabId !== null) {
-            chrome.tabs.remove(singleScrapeTabId, () => {
-                chrome.runtime.lastError; // silence potential errors if tab was already closed
-            });
-            singleScrapeTabId = null;
+        for (const workerId in workerTabs) {
+            const tabId = workerTabs[workerId];
+            if (tabId) {
+                chrome.tabs.remove(tabId, () => {
+                    chrome.runtime.lastError;
+                });
+            }
         }
+        workerTabs = {};
     }
 });
