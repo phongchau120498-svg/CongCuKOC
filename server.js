@@ -197,6 +197,9 @@ app.post('/api/screenshot', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`KOC Screenshot helper server listening on port ${PORT}`);
+  console.log(`\n======================================================`);
+  console.log(`🚀 ĐÃ KHỞI CHẠY TOOL ĐỐI CHIẾU KOC THÀNH CÔNG!`);
+  console.log(`👉 Nhấp vào link này để mở ứng dụng: http://localhost:${PORT}`);
+  console.log(`======================================================\n`);
   console.log(`Screenshots will be saved in: ${SCREENSHOTS_DIR}`);
 });
