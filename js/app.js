@@ -382,6 +382,23 @@
                     let valC = valId;
                     let valLink = row[indexA_Link] ? String(row[indexA_Link]).trim() : "";
                     
+                    // Normalize TikTok link: fallback to KOC ID if not a full URL
+                    if (valLink) {
+                        if (!valLink.startsWith('http')) {
+                            let cleanUser = valLink;
+                            if (cleanUser.startsWith('@')) {
+                                cleanUser = cleanUser.substring(1);
+                            }
+                            valLink = `https://www.tiktok.com/@${cleanUser}`;
+                        }
+                    } else if (valId) {
+                        let cleanUser = valId;
+                        if (cleanUser.startsWith('@')) {
+                            cleanUser = cleanUser.substring(1);
+                        }
+                        valLink = `https://www.tiktok.com/@${cleanUser}`;
+                    }
+                    
                     let compareValC = valC.toLowerCase();
                     
                     if (compareValC && mapB.has(compareValC)) {
