@@ -3,19 +3,33 @@ function parseViews(viewStr) {
     if (!viewStr) return 0;
     viewStr = viewStr.trim().toUpperCase();
     
+    // Normalize decimal separator for localized browser languages (e.g. Vietnamese "1,2Tr" -> "1.2Tr")
+    let cleanStr = viewStr.replace(/,/g, '.');
+    
     let multiplier = 1;
-    if (viewStr.endsWith('K')) {
+    if (cleanStr.endsWith('K') || cleanStr.endsWith('N')) {
         multiplier = 1000;
-        viewStr = viewStr.slice(0, -1);
-    } else if (viewStr.endsWith('M')) {
+        cleanStr = cleanStr.slice(0, -1);
+    } else if (cleanStr.endsWith('M') || cleanStr.endsWith('TR') || cleanStr.endsWith('T.R')) {
         multiplier = 1000000;
-        viewStr = viewStr.slice(0, -1);
-    } else if (viewStr.endsWith('B')) {
+        if (cleanStr.endsWith('TR')) {
+            cleanStr = cleanStr.slice(0, -2);
+        } else {
+            cleanStr = cleanStr.slice(0, -1);
+        }
+    } else if (cleanStr.endsWith('B') || cleanStr.endsWith('TY') || cleanStr.endsWith('T')) {
         multiplier = 1000000000;
-        viewStr = viewStr.slice(0, -1);
+        if (cleanStr.endsWith('TY')) {
+            cleanStr = cleanStr.slice(0, -2);
+        } else {
+            cleanStr = cleanStr.slice(0, -1);
+        }
     }
     
-    let num = parseFloat(viewStr.replace(/,/g, ''));
+    // Remove any remaining non-numeric characters except dots
+    cleanStr = cleanStr.replace(/[^0-9.]/g, '');
+    
+    let num = parseFloat(cleanStr);
     return isNaN(num) ? 0 : Math.round(num * multiplier);
 }
 
@@ -64,36 +78,88 @@ function extractVideoViewsFromJSON(jsonObj) {
     const playCounts = [];
     const seenIds = new Set();
     
-    function traverse(obj) {
+    // 1. Try to find the structured lists of item cards (which are cleaner and pre-ordered)
+    const items = [];
+    function findItemLists(obj) {
         if (!obj || typeof obj !== 'object') return;
         
-        // Direct playCount property (standard for some endpoints)
-        if (typeof obj.playCount !== 'undefined' && obj.id) {
-            const play = parseInt(obj.playCount);
-            if (!isNaN(play) && !seenIds.has(obj.id)) {
-                seenIds.add(obj.id);
-                playCounts.push(play);
-            }
+        if (Array.isArray(obj.itemList)) {
+            items.push(...obj.itemList);
         }
-        
-        // Nested inside stats object (standard for search/details endpoints)
-        if (obj.stats && typeof obj.stats.playCount !== 'undefined') {
-            const play = parseInt(obj.stats.playCount);
-            const id = obj.id || (obj.itemStruct && obj.itemStruct.id) || (obj.video && obj.video.id);
-            if (!isNaN(play) && id && !seenIds.has(id)) {
-                seenIds.add(id);
-                playCounts.push(play);
-            }
+        if (Array.isArray(obj.itemStruct)) {
+            items.push(...obj.itemStruct);
+        }
+        if (Array.isArray(obj.itemModule)) {
+            items.push(...obj.itemModule);
         }
         
         for (const key in obj) {
             if (Object.prototype.hasOwnProperty.call(obj, key)) {
-                traverse(obj[key]);
+                if (key !== 'itemList' && key !== 'itemStruct' && key !== 'itemModule') {
+                    findItemLists(obj[key]);
+                }
             }
         }
     }
     
-    traverse(jsonObj);
+    findItemLists(jsonObj);
+    
+    if (items.length > 0) {
+        items.forEach(item => {
+            if (!item || typeof item !== 'object') return;
+            const id = item.id || (item.video && item.video.id);
+            const play = parseInt(item.playCount || (item.stats && item.stats.playCount));
+            if (!isNaN(play) && id) {
+                if (!seenIds.has(id)) {
+                    seenIds.add(id);
+                    playCounts.push(play);
+                }
+            }
+        });
+    }
+    
+    // 2. Fallback general traversal if list structured check was empty
+    if (playCounts.length < 4) {
+        seenIds.clear();
+        playCounts.length = 0;
+        let dummyIdCounter = 0;
+        
+        function generalTraverse(obj) {
+            if (!obj || typeof obj !== 'object') return;
+            
+            if (obj.stats && typeof obj.stats.playCount !== 'undefined') {
+                const play = parseInt(obj.stats.playCount);
+                if (!isNaN(play)) {
+                    const id = obj.id || (obj.video && obj.video.id) || `dummy_${dummyIdCounter++}`;
+                    if (!seenIds.has(id)) {
+                        seenIds.add(id);
+                        playCounts.push(play);
+                    }
+                }
+                return;
+            }
+            
+            if (typeof obj.playCount !== 'undefined' && obj.id) {
+                const play = parseInt(obj.playCount);
+                if (!isNaN(play)) {
+                    if (!seenIds.has(obj.id)) {
+                        seenIds.add(obj.id);
+                        playCounts.push(play);
+                    }
+                }
+                return;
+            }
+            
+            for (const key in obj) {
+                if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                    generalTraverse(obj[key]);
+                }
+            }
+        }
+        
+        generalTraverse(jsonObj);
+    }
+    
     return playCounts;
 }
 
@@ -125,8 +191,12 @@ function tryExtractViewsFromScriptTags() {
             document.getElementById('SIGI_STATE')
         ];
         
-        // Get expected KOC username from current URL
-        const urlUsername = window.location.href.split('@')[1]?.split('?')[0]?.toLowerCase();
+        // Get expected KOC username robustly from current URL
+        let urlUsername = null;
+        const parts = window.location.href.split('@');
+        if (parts.length > 1) {
+            urlUsername = parts[1].split('/')[0].split('?')[0].toLowerCase();
+        }
         
         for (const scriptEl of scripts) {
             if (scriptEl && scriptEl.textContent) {
