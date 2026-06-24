@@ -1,10 +1,11 @@
 {
   "manifest_version": 3,
   "name": "KOC TikTok View Extractor",
-  "version": "1.1",
+  "version": "1.2",
   "description": "Tự động trích xuất và tính toán view TikTok cho công cụ đối chiếu KOC",
   "permissions": [
-    "tabs"
+    "tabs",
+    "declarativeNetRequest"
   ],
   "host_permissions": [
     "https://*.tiktok.com/*",

@@ -32,13 +32,86 @@ async function waitForElements(selector, minCount, timeout) {
     return document.querySelectorAll(selector);
 }
 
+// Traversal helper to find video view counts inside JSON Rehydration objects
+function extractVideoViewsFromJSON(jsonObj) {
+    const playCounts = [];
+    
+    function traverse(obj) {
+        if (!obj || typeof obj !== 'object') return;
+        
+        // If this represents a video post object containing stats
+        if (obj.stats && typeof obj.stats.playCount !== 'undefined' && (obj.id || obj.desc || obj.createTime)) {
+            const play = parseInt(obj.stats.playCount);
+            if (!isNaN(play)) {
+                playCounts.push(play);
+            }
+            // Avoid traversing deeper inside this specific post object to prevent duplicates
+            return;
+        }
+        
+        for (const key in obj) {
+            if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                traverse(obj[key]);
+            }
+        }
+    }
+    
+    traverse(jsonObj);
+    return playCounts;
+}
+
+// Try parsing user-detail JSON from TikTok's script tags
+function tryExtractViewsFromScriptTags() {
+    try {
+        const scripts = [
+            document.getElementById('__UNIVERSAL_DATA_FOR_REHYDRATION__'),
+            document.getElementById('SIGI_STATE')
+        ];
+        
+        for (const scriptEl of scripts) {
+            if (scriptEl && scriptEl.textContent) {
+                const jsonObj = JSON.parse(scriptEl.textContent);
+                const playCounts = extractVideoViewsFromJSON(jsonObj);
+                if (playCounts && playCounts.length >= 4) {
+                    console.log("[KOC Extension] Successfully extracted views from JSON script tag:", playCounts);
+                    return playCounts;
+                }
+            }
+        }
+    } catch (e) {
+        console.error("[KOC Extension] Error parsing script tag JSON:", e);
+    }
+    return null;
+}
+
 // Scrape logic
 async function scrapeTikTokViews() {
     console.log("[KOC Extension] Starting views extraction on TikTok...");
     
+    // 1. Try to extract views instantly from page JSON script tags
+    const jsonViews = tryExtractViewsFromScriptTags();
+    if (jsonViews && jsonViews.length >= 4) {
+        let viewSum = 0;
+        const viewsToSum = jsonViews.slice(3, 10);
+        viewsToSum.forEach(v => viewSum += v);
+        
+        console.log("[KOC Extension] JSON parse success. View sum:", viewSum);
+        
+        chrome.runtime.sendMessage({
+            action: "SCRAPE_RESULT",
+            success: true,
+            viewSum: viewSum,
+            views: jsonViews
+        });
+        return;
+    }
+    
+    // 2. Fallback: DOM scraping method
+    console.log("[KOC Extension] JSON parse empty or failed, falling back to DOM scraping...");
+    
     // Wait for the video views to load. If captcha is shown, this loop keeps running
     // giving the user time to solve it. Once solved, elements will appear and it will proceed.
-    const elements = await waitForElements('[data-e2e="video-views"]', 10, 60000);
+    const elements = await waitForElements('[data-e2e="video-views"]', 10, 30000);
     
     if (elements.length < 4) {
         // Check if we are stuck on a verification page
@@ -71,7 +144,7 @@ async function scrapeTikTokViews() {
         views.push(parseViews(text));
     });
     
-    console.log("[KOC Extension] Scraped views array:", views);
+    console.log("[KOC Extension] Scraped views array via DOM:", views);
     
     // Skip 3, sum 7
     let viewSum = 0;
