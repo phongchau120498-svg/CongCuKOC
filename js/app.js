@@ -1169,6 +1169,10 @@
                     try {
                         let result;
                         if (isExtensionActive()) {
+                            // Cố tình làm chậm và chạy rải rác các request để tránh bị TikTok chặn (Rate Limit)
+                            const staggerDelay = 1500 + (workerId * 800); 
+                            await new Promise(resolve => setTimeout(resolve, staggerDelay));
+                            
                             result = await scrapeViaExtension(item.link, absoluteIndex, currentBatchType, workerId);
                         } else {
                             const response = await fetch('http://localhost:3000/api/screenshot', {
