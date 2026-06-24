@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Công cụ đối chiếu KOC & Đơn Hàng V3 Pro</title>
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- SheetJS (Excel) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Chart.js for data visualization -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <div class="container">
+        <!-- Top Header & Bookmarklet Widget -->
+        <header class="header glass-card">
+            <div class="brand-section">
+                <h1>Công Cụ KOC Toàn Diện Pro</h1>
+                <p>Hệ thống Đối chiếu Tự động & Hỗ trợ Lấy nhanh View TikTok</p>
+            </div>
+
+            <div class="action-bar">
+                <!-- Screenshot Helper Status Badge -->
+                <div class="helper-status-badge" id="helperStatusBadge" onclick="showHelperInstructions()" title="Click để xem hướng dẫn kết nối">
+                    <span class="status-dot red" id="helperStatusDot"></span>
+                    <span class="status-text" id="helperStatusText">Chưa chạy helper</span>
+                </div>
+
+                <!-- Global Headful Checkbox -->
+                <label class="global-headful-label" title="Tích chọn để hiện trình duyệt ảo khi chụp, giúp bạn tự kéo thanh trượt giải Captcha của TikTok">
+                    <input type="checkbox" id="globalHeadfulCheckbox">
+                    <span>Hiện trình duyệt (giải Captcha)</span>
+                </label>
+
+                <!-- Theme switcher -->
+                <button class="btn-icon" id="themeToggle" title="Chuyển chế độ sáng/tối">
+                    <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="4"></circle>
+                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+                    </svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Dropzones Row -->
+        <main class="dropzone-grid">
+            <!-- File A Card -->
+            <div class="glass-card dropzone-card">
+                <div class="dropzone-header">
+                    <h2 class="dropzone-title">
+                        <span class="badge-step badge-a">A</span>
+                        File Data KOC
+                    </h2>
+                    <button onclick="downloadTemplate('A')" class="btn-text">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                        Tải file mẫu A
+                    </button>
+                </div>
+                
+                <div class="dropzone-area" id="dropzoneA">
+                    <svg class="dropzone-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m3.75 9v6m3-3H9m1.5-12H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                    </svg>
+                    <p class="dropzone-text">Tải lên File A (Chứa KOC)</p>
+                    <p class="dropzone-subtext">Kéo thả file .xlsx, .xls hoặc .csv vào đây</p>
+                    <input type="file" id="fileA" accept=".xlsx, .xls, .csv">
+                </div>
+
+                <div class="file-info" id="fileInfoA">
+                    <div class="file-details">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        <span class="file-name" id="fileNameA">koc_file.xlsx</span>
+                        <span class="file-size" id="fileSizeA">(120 KB)</span>
+                    </div>
+                    <button class="btn-clear" id="btnClearA">&times;</button>
+                </div>
+            </div>
+
+            <!-- File B Card -->
+            <div class="glass-card dropzone-card">
+                <div class="dropzone-header">
+                    <h2 class="dropzone-title">
+                        <span class="badge-step badge-b">B</span>
+                        File Đơn Hàng
+                    </h2>
+                    <button onclick="downloadTemplate('B')" class="btn-text">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                        Tải file mẫu B
+                    </button>
+                </div>
+                
+                <div class="dropzone-area" id="dropzoneB">
+                    <svg class="dropzone-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m5.25 11.25H9.75M9 18.75h5.25m7.5-14.25v15a2.25 2.25 0 01-2.25 2.25H6.75A2.25 2.25 0 014.5 19.5v-15a2.25 2.25 0 012.25-2.25h10.5A2.25 2.25 0 0119.5 4.5zM9 11.25h.008v.008H9v-.008zm.008 2.25H9v.008h.008v-.008zm0 2.25H9v.008h.008v-.008z" />
+                    </svg>
+                    <p class="dropzone-text">Tải lên File B (Chứa Đơn Hàng)</p>
+                    <p class="dropzone-subtext">Kéo thả file .xlsx, .xls hoặc .csv vào đây</p>
+                    <input type="file" id="fileB" accept=".xlsx, .xls, .csv">
+                </div>
+
+                <div class="file-info" id="fileInfoB">
+                    <div class="file-details">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--secondary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                        <span class="file-name" id="fileNameB">order_file.xlsx</span>
+                        <span class="file-size" id="fileSizeB">(2.1 MB)</span>
+                    </div>
+                    <button class="btn-clear" id="btnClearB">&times;</button>
+                </div>
+            </div>
+        </main>
+
+        <!-- Advanced settings Accordion -->
+        <div class="config-accordion">
+            <button class="config-trigger" id="configTrigger">
+                <span style="display: flex; align-items: center; gap: 0.5rem;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                    Thiết lập Cấu hình Cột dữ liệu (Nâng cao)
+                </span>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+            
+            <div class="config-content" id="configContent">
+                <div class="config-grid">
+                    <!-- Column Mapping File A -->
+                    <div class="config-group">
+                        <h4>Ánh xạ cột trong File A (Data KOC)</h4>
+                        
+                        <div class="input-row">
+                            <label for="colAId">Cột chứa KOC ID (đối chiếu):</label>
+                            <input type="text" id="colAId" class="input-small" value="C" placeholder="C">
+                        </div>
+                        <div class="input-row">
+                            <label for="colATikTok">Cột chứa Link TikTok:</label>
+                            <input type="text" id="colATikTok" class="input-small" value="R" placeholder="R">
+                        </div>
+                    </div>
+
+                    <!-- Column Mapping File B -->
+                    <div class="config-group">
+                        <h4>Ánh xạ cột trong File B (Đơn Hàng)</h4>
+                        
+                        <div class="input-row">
+                            <label for="colBCompare">Cột chứa KOC ID (đối chiếu):</label>
+                            <input type="text" id="colBCompare" class="input-small" value="E" placeholder="E">
+                        </div>
+                        <div class="input-row">
+                            <label for="colBBrand">Cột chứa Tên Brand:</label>
+                            <input type="text" id="colBBrand" class="input-small" value="N" placeholder="N">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls Trigger Reconciliation -->
+        <div class="control-bar glass-card">
+            <label class="checkbox-container">
+                Bỏ qua dòng đầu tiên (Dòng tiêu đề của bảng)
+                <input type="checkbox" id="skipHeader" checked>
+                <span class="checkmark"></span>
+            </label>
+
+            <button id="processBtn" class="btn-primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M9 14l2 2 4-4"></path></svg>
+                Tiến Hành Đối Chiếu Dữ Liệu
+            </button>
+        </div>
+
+        <!-- Spinner Loading -->
+        <div class="loading-section" id="loading">
+            <div class="spinner"></div>
+            <p class="loading-text">Hệ thống đang nạp và so khớp hàng ngàn bản ghi, vui lòng đợi...</p>
+        </div>
+
+        <!-- Results Dashboard Area -->
+        <section class="dashboard-area" id="resultArea">
+            <!-- Stats -->
+            <div class="stats-grid">
+                <!-- Total Card -->
+                <div class="stat-card">
+                    <div class="stat-glow total"></div>
+                    <p class="stat-label">Tổng data KOC (A)</p>
+                    <p class="stat-value" id="totalCount">0</p>
+                </div>
+                <!-- Matched Card -->
+                <div class="stat-card">
+                    <div class="stat-glow matched"></div>
+                    <p class="stat-label" style="color: var(--success);">Đã Gửi (Có Đơn)</p>
+                    <p class="stat-value" id="matchCount">0</p>
+                </div>
+                <!-- Unmatched Card -->
+                <div class="stat-card">
+                    <div class="stat-glow unmatched"></div>
+                    <p class="stat-label" style="color: var(--danger);">Chưa Gửi (Không trùng)</p>
+                    <p class="stat-value" id="unmatchCount">0</p>
+                </div>
+                <!-- Percentage Ratio Card -->
+                <div class="stat-card">
+                    <div class="stat-glow rate"></div>
+                    <p class="stat-label" style="color: var(--accent);">Tỉ lệ có đơn</p>
+                    <p class="stat-value" id="ratePercentage">0%</p>
+                </div>
+            </div>
+
+            <!-- Charts and Summary metrics -->
+            <div class="analytics-section">
+                <!-- Data Insights & Summary Cards -->
+                <div class="glass-card" style="display: flex; flex-direction: column; justify-content: space-between;">
+                    <div style="margin-bottom: 1rem;">
+                        <h3 style="margin-bottom: 0.5rem; font-size: 1.25rem;">Thống kê tổng quan</h3>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; line-height: 1.6;">
+                            Hệ thống đã thực hiện so sánh chuỗi (không phân biệt hoa thường) giữa cột đối chiếu của File A và File B.
+                            Dưới đây là thống kê tỉ lệ và danh sách phân tích chi tiết. Bạn có thể sử dụng bộ lọc tìm kiếm nhanh hoặc lọc theo từng Brand cụ thể để xuất báo cáo riêng biệt.
+                        </p>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+                        <div style="background: var(--bg-canvas); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                            <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">Số Brand khác biệt</h4>
+                            <p style="font-size: 1.5rem; font-weight: 800; color: var(--secondary);" id="brandCount">0</p>
+                        </div>
+                        <div style="background: var(--bg-canvas); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                            <h4 style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;">KOC Trùng & Đủ Brand</h4>
+                            <p style="font-size: 1.5rem; font-weight: 800; color: var(--primary);" id="perfectMatchCount">0</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pie Chart Card -->
+                <div class="glass-card chart-card">
+                    <canvas id="reconciliationChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Tabulated Lists -->
+            <div class="glass-card">
+                <!-- Navigation Tabs -->
+                <div class="tabs-header">
+                    <button class="tab-btn active" onclick="switchTab('unmatchTab')">
+                        ❌ KOC Chưa Từng Gửi Đơn (<span id="unmatchBadge">0</span>)
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('brandTab')">
+                        ⚠️ KOC Trùng Nhưng Thiếu Brand (<span id="brandBadge">0</span>)
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('matchTab')">
+                        ✅ KOC Đã Gửi Đơn (<span id="matchBadge">0</span>)
+                    </button>
+                </div>
+
+                <!-- TAB 1: Unmatched KOCs -->
+                <div class="tab-content active" id="unmatchTab">
+                    <div class="filter-controls">
+                        <div class="search-input-wrapper">
+                            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <input type="text" placeholder="Tìm kiếm KOC ID hoặc Giá trị đối chiếu..." class="search-input" oninput="filterTable('unmatch', this.value)">
+                        </div>
+
+                        <div class="actions-right">
+                            <button class="btn-capture-batch" id="unmatchBatchBtn" onclick="openBatchCaptureModal('unmatch')">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                                Tự Động Chụp View Kênh
+                            </button>
+                            <button class="btn-download" onclick="downloadTableData('unmatch')">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                                Xuất Excel
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table id="unmatchTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 70px;">STT</th>
+                                    <th>KOC ID</th>
+                                    <th>Link TikTok</th>
+                                    <th style="width: 150px;">Ảnh chụp kênh</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Dinamically rendered -->
+                            </tbody>
+                        </table>
+                        <div class="empty-state" id="unmatchEmpty" style="display: none;">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <p>Không có dữ liệu trùng khớp với bộ lọc</p>
+                        </div>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="pagination-container">
+                        <span id="unmatchPageInfo">Đang hiển thị 0 - 0 của 0 bản ghi</span>
+                        <div class="pagination-buttons">
+                            <button class="btn-page" id="unmatchPrev" onclick="changePage('unmatch', -1)">&larr; Trước</button>
+                            <button class="btn-page" id="unmatchNext" onclick="changePage('unmatch', 1)">Sau &rarr;</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: Matched but missing Brand -->
+                <div class="tab-content" id="brandTab">
+                    <div class="filter-controls">
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; flex-grow: 1;">
+                            <div class="search-input-wrapper">
+                                <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                </svg>
+                                <input type="text" placeholder="Tìm kiếm KOC ID hoặc Giá trị..." class="search-input" oninput="filterTable('brand', this.value)">
+                            </div>
+                            
+                            <!-- Brand selector -->
+                            <select id="brandSelector" class="select-brand">
+                                <option value="">-- Chọn Brand (Cột N) --</option>
+                            </select>
+                        </div>
+
+                        <div class="actions-right">
+                            <button class="btn-capture-batch disabled" id="brandBatchBtn" onclick="openBatchCaptureModal('brand')" disabled>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                                Tự Động Chụp View Kênh
+                            </button>
+                            <button class="btn-download disabled" id="downloadBrandBtn" onclick="downloadTableData('brand')" disabled>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                                Xuất File Excel
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table id="brandTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 70px;">STT</th>
+                                    <th>KOC ID</th>
+                                    <th>Các Brand Đã Có Đơn</th>
+                                    <th>Link TikTok</th>
+                                    <th style="width: 150px;">Ảnh chụp kênh</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td colspan="5" class="empty-state">
+                                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+                                        </svg>
+                                        <p>Vui lòng chọn một Brand từ thanh công cụ bên trên để bắt đầu đối đối chiếu</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                        <div class="empty-state" id="brandEmpty" style="display: none;">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <p>Không tìm thấy KOC nào bị thiếu Brand đã chọn</p>
+                        </div>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="pagination-container">
+                        <span id="brandPageInfo">Đang hiển thị 0 - 0 của 0 bản ghi</span>
+                        <div class="pagination-buttons">
+                            <button class="btn-page" id="brandPrev" onclick="changePage('brand', -1)">&larr; Trước</button>
+                            <button class="btn-page" id="brandNext" onclick="changePage('brand', 1)">Sau &rarr;</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TAB 3: Matched KOCs -->
+                <div class="tab-content" id="matchTab">
+                    <div class="filter-controls">
+                        <div class="search-input-wrapper">
+                            <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                            <input type="text" placeholder="Tìm kiếm KOC ID hoặc Giá trị đối chiếu..." class="search-input" oninput="filterTable('match', this.value)">
+                        </div>
+
+                        <div class="actions-right">
+                            <button class="btn-capture-batch" id="matchBatchBtn" onclick="openBatchCaptureModal('match')">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                                Tự Động Chụp View Kênh
+                            </button>
+                            <button class="btn-download" onclick="downloadTableData('match')">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                                Xuất Excel
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <table id="matchTable">
+                            <thead>
+                                <tr>
+                                    <th style="width: 70px;">STT</th>
+                                    <th>KOC ID</th>
+                                    <th>Các Brand Đã Có Đơn</th>
+                                    <th>Link TikTok</th>
+                                    <th style="width: 150px;">Ảnh chụp kênh</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Dinamically rendered -->
+                            </tbody>
+                        </table>
+                        <div class="empty-state" id="matchEmpty" style="display: none;">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                            <p>Không có dữ liệu trùng khớp với bộ lọc</p>
+                        </div>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div class="pagination-container">
+                        <span id="matchPageInfo">Đang hiển thị 0 - 0 của 0 bản ghi</span>
+                        <div class="pagination-buttons">
+                            <button class="btn-page" id="matchPrev" onclick="changePage('match', -1)">&larr; Trước</button>
+                            <button class="btn-page" id="matchNext" onclick="changePage('match', 1)">Sau &rarr;</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- Screenshot Helper Instructions Modal -->
+    <div class="modal-overlay" id="helperInstructionsModal">
+        <div class="modal-container" style="max-width: 500px;">
+            <div class="modal-header">
+                <span class="modal-title">🔧 Hướng dẫn kích hoạt Chụp ảnh</span>
+                <button class="modal-close" onclick="closeModal('helperInstructionsModal')">&times;</button>
+            </div>
+            <div class="modal-body" style="line-height: 1.6;">
+                <p style="margin-bottom: 1rem;">Để sử dụng tính năng <b>Tự động mở link và chụp ảnh màn hình</b>, bạn cần chạy một local server helper trên máy tính của bạn:</p>
+                <ol style="margin-left: 1.5rem; margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                    <li>Mở <b>Terminal</b> tại thư mục dự án:<br><code style="background: var(--bg-canvas); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; word-break: break-all;">/home/thanh-phong/CTP DESKTOP/CongCuKOC</code></li>
+                    <li>Khởi động helper bằng lệnh:<br><code style="background: var(--bg-canvas); padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; font-weight: 700; color: var(--primary);">node server.js</code></li>
+                </ol>
+                <p style="color: var(--text-muted); font-size: 0.8rem;">Khi server đang chạy, chấm trạng thái phía trên sẽ chuyển sang màu xanh lá 🟢 và tất cả tính năng chụp ảnh tự động sẽ sẵn sàng hoạt động!</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary" onclick="closeModal('helperInstructionsModal')" style="padding: 0.5rem 1.5rem;">Đã hiểu</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lightbox Modal for screenshot view -->
+    <div class="lightbox-modal" id="lightboxModal" onclick="closeLightbox()">
+        <div class="lightbox-content" onclick="event.stopPropagation()">
+            <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+            <img src="" class="lightbox-img" id="lightboxImg" alt="Full Screenshot">
+            <p class="lightbox-caption" id="lightboxCaption"></p>
+        </div>
+    </div>
+
+    <!-- Batch Capture Modal -->
+    <div class="modal-overlay" id="batchCaptureModal">
+        <div class="modal-container">
+            <div class="modal-header">
+                <span class="modal-title">📸 Chụp ảnh Kênh TikTok Hàng Loạt</span>
+                <button class="modal-close" onclick="closeBatchModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Config Panel -->
+                <div style="background: var(--bg-canvas); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 1rem; margin-bottom: 1rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                        <label style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Chế độ chụp:</label>
+                        <label class="checkbox-container" style="padding-left: 2rem; font-size: 0.8rem; margin: 0;">
+                            Hiển thị trình duyệt (Để tự giải captcha)
+                            <input type="checkbox" id="batchHeadful">
+                            <span class="checkmark" style="top: -2px;"></span>
+                        </label>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <label for="batchDelay" style="font-size: 0.8rem; font-weight: 600; color: var(--text-secondary);">Độ trễ sau khi load trang (giây):</label>
+                        <input type="number" id="batchDelay" class="input-small" value="4" style="width: 80px; text-align: left;" min="1" max="30">
+                    </div>
+                </div>
+
+                <!-- Progress bar -->
+                <div style="display: flex; justify-content: space-between; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem;">
+                    <span id="batchProgressText">Chờ bắt đầu...</span>
+                    <span id="batchPercentText">0%</span>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar" id="batchProgressBar"></div>
+                </div>
+
+                <!-- List of items to process -->
+                <div class="batch-list" id="batchListContainer">
+                    <!-- Dynamic items -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="openScreenshotsDirBtn" onclick="openScreenshotsFolder()" style="display: none; align-items: center; gap: 0.25rem;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                    Mở Thư Mục Ảnh
+                </button>
+                <button class="btn-secondary" onclick="closeBatchModal()">Đóng</button>
+                <button class="btn-primary" id="startBatchBtn" onclick="startBatchProcessing()">Bắt đầu chụp</button>
+                <button class="btn-primary" id="stopBatchBtn" onclick="stopBatchProcessing()" style="display: none; background: var(--danger); box-shadow: 0 4px 14px rgba(239, 68, 68, 0.3);">Dừng lại</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notifications Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "KOC TikTok View Extractor",
+  "version": "1.0",
+  "description": "Tự động trích xuất và tính toán view TikTok cho công cụ đối chiếu KOC",
+  "permissions": [
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://*.tiktok.com/*",
+    "http://localhost:3000/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://localhost:3000/*"],
+      "js": ["content_localhost.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://*.tiktok.com/*"],
+      "js": ["content_tiktok.js"],
+      "run_at": "document_end"
+    }
+  ]
+}
