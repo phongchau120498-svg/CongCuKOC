@@ -39,19 +39,46 @@ async function instantWaitForElements(selectors, minCount, timeout) {
     while (Date.now() - start < timeout) {
         let bestElements = [];
         
-        // Scan elements
-        for (const selector of selectors) {
-            const found = document.querySelectorAll(selector);
-            // Instant grab: as soon as the target amount shows up, return instantly!
-            if (found.length >= minCount) return found;
-            if (found.length > bestElements.length) bestElements = found;
-        }
-        
         // Error screens handling
         const hasErrorScreen = document.body.innerText.includes("Đã xảy ra lỗi") || 
                                document.body.innerText.includes("Vui lòng thử lại sau.") ||
                                document.body.innerText.includes("Something went wrong");
-        if (hasErrorScreen) return [];
+                               
+        if (hasErrorScreen) {
+            const reloads = parseInt(sessionStorage.getItem('koc_reload_count') || '0');
+            if (reloads < 2) {
+                sessionStorage.setItem('koc_reload_count', reloads + 1);
+                console.log(`[KOC Extension] Hit TikTok error screen. In-page reload ${reloads+1}/2...`);
+                setTimeout(() => window.location.reload(), 1500);
+                await new Promise(r => setTimeout(r, 10000)); // Wait for reload
+                return [];
+            }
+            return []; // Give up after 2 reloads
+        }
+        
+        // Scan elements
+        for (const selector of selectors) {
+            const found = document.querySelectorAll(selector);
+            
+            if (found.length >= minCount) {
+                // Verify they actually have text data (TikTok might render empty elements first)
+                let hasData = true;
+                for (let i = 0; i < Math.min(4, found.length); i++) {
+                    if (!found[i].textContent || found[i].textContent.trim() === '') {
+                        hasData = false;
+                        break;
+                    }
+                }
+                
+                if (hasData) {
+                    sessionStorage.removeItem('koc_reload_count'); // Success, clear reload counter
+                    // Let it settle for 1.5s to ensure all numbers are fully loaded
+                    await new Promise(r => setTimeout(r, 1500));
+                    return document.querySelectorAll(selector);
+                }
+            }
+            if (found.length > bestElements.length) bestElements = found;
+        }
 
         const hasCaptcha = document.querySelector('.captcha_verify_container') || 
                            document.querySelector('#captcha-verify-image') ||
@@ -60,7 +87,7 @@ async function instantWaitForElements(selectors, minCount, timeout) {
                            
         if (hasCaptcha) start = Date.now(); // Reset timer if captcha blocks view
 
-        await new Promise(r => setTimeout(r, 200)); // Check every 200ms
+        await new Promise(r => setTimeout(r, 300)); // Check every 300ms
     }
     return []; // Return empty if timeout
 }
