@@ -1197,11 +1197,8 @@
                                 badge.className = 'batch-status-badge success';
                             }
 
-                            // If extension is active and the channel is Passed ("Đạt"), queue asynchronous screenshot capture
-                            if (isExtensionActive() && !item.isRejected) {
-                                item.screenshotStatus = 'pending';
-                                queueScreenshot(item.link, absoluteIndex, currentBatchType);
-                            }
+                            // Screenshot queue disabled temporarily per user request
+                            item.screenshotStatus = 'idle';
                         } else {
                             if (!batchCancelRequested) {
                                 item.screenshotStatus = 'error';
