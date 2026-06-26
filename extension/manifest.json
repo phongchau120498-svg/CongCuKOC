@@ -5,7 +5,9 @@
   "description": "Tự động trích xuất và tính toán view TikTok cho công cụ đối chiếu KOC",
   "permissions": [
     "tabs",
-    "windows"
+    "windows",
+    "scripting",
+    "debugger"
   ],
   "host_permissions": [
     "https://*.tiktok.com/*",
@@ -35,7 +37,8 @@
     {
       "matches": ["https://*.tiktok.com/*"],
       "js": ["content_tiktok.js"],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "all_frames": true
     }
   ]
 }

@@ -590,6 +590,76 @@
             font-weight: 600;
         }
 
+        /* Sidebar Layout */
+        .app-layout {
+            display: flex;
+            gap: 1.25rem;
+            align-items: flex-start;
+        }
+
+        .sidebar {
+            width: 220px;
+            flex-shrink: 0;
+            background: var(--bg-card);
+            backdrop-filter: var(--glass-blur);
+            -webkit-backdrop-filter: var(--glass-blur);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-lg);
+            padding: 0.625rem;
+            position: sticky;
+            top: 1.5rem;
+            box-shadow: var(--shadow-md);
+        }
+
+        .sidebar-label {
+            font-size: 0.68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            padding: 0.5rem 0.875rem 0.4rem;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.65rem 0.875rem;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            font-size: 0.855rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            border: none;
+            background: none;
+            width: 100%;
+            text-align: left;
+            transition: var(--transition);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+        }
+
+        .nav-item:hover {
+            background: var(--bg-canvas);
+            color: var(--text-primary);
+        }
+
+        .nav-item.active {
+            background: var(--primary-light);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .nav-item svg { flex-shrink: 0; opacity: 0.65; }
+        .nav-item.active svg { opacity: 1; }
+
+        .page-content { flex: 1; min-width: 0; }
+
+        @media (max-width: 768px) {
+            .app-layout { flex-direction: column; }
+            .sidebar { width: 100%; position: static; display: flex; gap: 0.35rem; padding: 0.4rem; }
+            .sidebar-label { display: none; }
+        }
+
         /* Dashboard Results Area */
         .dashboard-area {
             display: none;

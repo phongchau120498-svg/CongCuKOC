@@ -38,6 +38,24 @@
             </div>
         </header>
 
+        <div class="app-layout">
+            <!-- Sidebar nav -->
+            <nav class="sidebar">
+                <div class="sidebar-label">Tính năng</div>
+                <button class="nav-item active" id="nav-reconcile" onclick="showPage('reconcile')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line></svg>
+                    Đối chiếu & Cào KOC
+                </button>
+                <button class="nav-item" id="nav-messaging" onclick="showPage('messaging')">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    Gửi Tin Nhắn
+                </button>
+            </nav>
+
+            <!-- Page content -->
+            <div class="page-content">
+                <div id="page-reconcile">
+
         <!-- Dropzones Row -->
         <main class="dropzone-grid">
             <!-- File A Card -->
@@ -255,6 +273,12 @@
                         </div>
                     </div>
 
+                    <div style="display:flex;gap:1.5rem;padding:0.4rem 0.25rem 0.6rem;font-size:0.85rem;flex-wrap:wrap;">
+                        <span style="color:var(--success);">✅ Đạt: <strong id="unmatchDatCount">0</strong></span>
+                        <span style="color:var(--danger);">❌ Loại: <strong id="unmatchLoaiCount">0</strong></span>
+                        <span style="color:var(--text-muted);">⏳ Chưa Cào: <strong id="unmatchChuaCount">0</strong></span>
+                    </div>
+
                     <div class="table-container">
                         <table id="unmatchTable">
                             <thead>
@@ -316,6 +340,12 @@
                                 Xuất File Excel
                             </button>
                         </div>
+                    </div>
+
+                    <div style="display:flex;gap:1.5rem;padding:0.4rem 0.25rem 0.6rem;font-size:0.85rem;flex-wrap:wrap;">
+                        <span style="color:var(--success);">✅ Đạt: <strong id="brandDatCount">0</strong></span>
+                        <span style="color:var(--danger);">❌ Loại: <strong id="brandLoaiCount">0</strong></span>
+                        <span style="color:var(--text-muted);">⏳ Chưa Cào: <strong id="brandChuaCount">0</strong></span>
                     </div>
 
                     <div class="table-container">
@@ -380,6 +410,12 @@
                         </div>
                     </div>
 
+                    <div style="display:flex;gap:1.5rem;padding:0.4rem 0.25rem 0.6rem;font-size:0.85rem;flex-wrap:wrap;">
+                        <span style="color:var(--success);">✅ Đạt: <strong id="matchDatCount">0</strong></span>
+                        <span style="color:var(--danger);">❌ Loại: <strong id="matchLoaiCount">0</strong></span>
+                        <span style="color:var(--text-muted);">⏳ Chưa Cào: <strong id="matchChuaCount">0</strong></span>
+                    </div>
+
                     <div class="table-container">
                         <table id="matchTable">
                             <thead>
@@ -414,6 +450,115 @@
                 </div>
             </div>
         </section>
+
+                </div><!-- /page-reconcile -->
+
+                <div id="page-messaging" style="display:none;">
+
+    <!-- MESSAGING SECTION -->
+    <section class="glass-card" id="messagingSection">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;">
+            <div style="display:flex;align-items:center;gap:0.75rem;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                <h2 style="font-size:1.1rem;font-weight:700;margin:0;">Gửi Tin Nhắn Hàng Loạt</h2>
+            </div>
+            <div style="display:flex;align-items:center;gap:0.5rem;font-size:0.8rem;background:var(--bg-canvas);padding:0.35rem 0.75rem;border-radius:999px;border:1px solid var(--border-color);">
+                <span class="status-dot" id="msgStatusDot" style="background:var(--danger);flex-shrink:0;"></span>
+                <span id="msgStatusText">Extension chưa kích hoạt</span>
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem;">
+            <!-- File dropzone -->
+            <div>
+                <label style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.4rem;display:block;">File danh sách KOC cần nhắn tin (.xlsx / .xls / .csv)</label>
+                <div id="msgDropzone" class="dropzone-area" style="min-height:80px;cursor:pointer;" onclick="document.getElementById('msgFileInput').click()">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+                    <p style="margin:0.4rem 0 0;font-size:0.82rem;color:var(--text-muted);">Kéo thả hoặc click để chọn file</p>
+                </div>
+                <div id="msgFileInfo" class="file-info" style="display:none;">
+                    <span class="file-icon">📄</span>
+                    <span id="msgFileName" class="file-name-text"></span>
+                    <span id="msgFileSize" class="file-size-text"></span>
+                    <button class="btn-clear-file" id="btnClearMsgFile" onclick="clearMsgFile()">✕</button>
+                </div>
+                <input type="file" id="msgFileInput" accept=".xlsx,.xls,.csv" style="display:none;">
+            </div>
+
+            <!-- Config -->
+            <div style="display:flex;flex-direction:column;gap:0.85rem;">
+                <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;">
+                    <div>
+                        <label style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">Cột KOC ID</label>
+                        <input type="text" id="msgColId" value="A" class="input-small" style="width:56px;text-align:center;text-transform:uppercase;">
+                    </div>
+                    <div>
+                        <label style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">Cột Link TikTok</label>
+                        <input type="text" id="msgColLink" value="B" class="input-small" style="width:56px;text-align:center;text-transform:uppercase;">
+                    </div>
+                    <label class="checkbox-container" style="padding-left:1.75rem;font-size:0.8rem;margin:0 0 2px;">
+                        Bỏ qua hàng đầu
+                        <input type="checkbox" id="msgSkipHeader" checked>
+                        <span class="checkmark" style="top:0;"></span>
+                    </label>
+                </div>
+                <div>
+                    <label style="font-size:0.75rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:0.25rem;">Giây chờ giữa mỗi tin nhắn</label>
+                    <input type="number" id="msgDelay" value="5" min="3" max="60" class="input-small" style="width:70px;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Message template -->
+        <div style="margin-bottom:1.25rem;">
+            <label style="font-size:0.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:0.4rem;display:block;">
+                Nội dung tin nhắn mẫu — dùng <code style="background:var(--bg-canvas);padding:1px 6px;border-radius:4px;font-size:0.8rem;color:var(--accent);">{KOC_ID}</code> để tự điền ID
+            </label>
+            <textarea id="msgTemplate" rows="4" placeholder="Ví dụ: Chào bạn {KOC_ID}, mình là team KOC của [Thương hiệu]. Mình muốn hợp tác với bạn về chiến dịch sắp tới..." style="width:100%;box-sizing:border-box;background:var(--bg-canvas);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:0.75rem;font-size:0.875rem;color:var(--text-main);resize:vertical;font-family:inherit;outline:none;line-height:1.6;transition:border-color 0.2s;"></textarea>
+        </div>
+
+        <!-- Buttons + progress text -->
+        <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;">
+            <button class="btn-capture-batch" id="startMsgBtn" onclick="startBulkMessaging()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                Bắt đầu gửi tin nhắn
+            </button>
+            <button id="stopMsgBtn" onclick="stopBulkMessaging()" style="display:none;align-items:center;gap:0.4rem;padding:0.5rem 1rem;border-radius:var(--radius-md);border:1px solid rgba(239,68,68,0.35);background:rgba(239,68,68,0.08);color:var(--danger);font-size:0.85rem;font-weight:600;cursor:pointer;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"></rect></svg>
+                Dừng lại
+            </button>
+            <span id="msgProgressText" style="font-size:0.85rem;color:var(--text-muted);"></span>
+        </div>
+
+        <!-- Progress bar -->
+        <div id="msgProgressBarWrap" style="display:none;margin-top:0.75rem;background:var(--border-color);border-radius:999px;height:6px;overflow:hidden;">
+            <div id="msgProgressBar" style="width:0%;height:100%;background:linear-gradient(90deg,var(--accent),#ff4689);transition:width 0.3s ease;"></div>
+        </div>
+
+        <!-- Result table -->
+        <div id="msgTableWrap" style="display:none;margin-top:1.25rem;">
+            <div style="display:flex;gap:1.5rem;padding:0.4rem 0.25rem 0.6rem;font-size:0.85rem;">
+                <span style="color:var(--success);">✅ Đã gửi: <strong id="msgSentCount">0</strong></span>
+                <span style="color:var(--danger);">❌ Lỗi: <strong id="msgErrCount">0</strong></span>
+                <span style="color:var(--text-muted);">⏳ Chờ gửi: <strong id="msgPendingCount">0</strong></span>
+            </div>
+            <div class="table-container">
+                <table id="msgTable">
+                    <thead><tr>
+                        <th style="width:50px;">STT</th>
+                        <th>KOC ID</th>
+                        <th>Link TikTok</th>
+                        <th style="width:140px;">Trạng thái</th>
+                    </tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+                </div><!-- /page-messaging -->
+            </div><!-- /page-content -->
+        </div><!-- /app-layout -->
 
     </div>
 

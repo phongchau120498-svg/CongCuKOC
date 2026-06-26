@@ -19,7 +19,7 @@ window.addEventListener("message", (event) => {
 
 // Listen to messages from the extension background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === "SCRAPE_FINISHED" || message.action === "UPDATE_SCREENSHOT") {
+    if (message.action === "SCRAPE_FINISHED" || message.action === "UPDATE_SCREENSHOT" || message.action === "MESSAGE_FINISHED") {
         // Forward message to the web page
         window.postMessage({
             type: "TO_PAGE",

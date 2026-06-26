@@ -1,3 +1,11 @@
+        // --- PAGE NAVIGATION ---
+        function showPage(page) {
+            document.getElementById('page-reconcile').style.display = page === 'reconcile' ? '' : 'none';
+            document.getElementById('page-messaging').style.display = page === 'messaging' ? '' : 'none';
+            document.getElementById('nav-reconcile').classList.toggle('active', page === 'reconcile');
+            document.getElementById('nav-messaging').classList.toggle('active', page === 'messaging');
+        }
+
         // --- THEME MANAGEMENT ---
         const themeToggle = document.getElementById('themeToggle');
         const themeIcon = document.getElementById('themeIcon');
@@ -123,12 +131,17 @@
         window.addEventListener("message", (event) => {
             if (event.data && event.data.type === "TO_PAGE") {
                 const result = event.data.data;
-                handleScrapeResultFromExtension(result);
+                if (result.action === "MESSAGE_FINISHED") {
+                    const resolve = msgResolvers[result.index];
+                    if (resolve) { delete msgResolvers[result.index]; resolve(result); }
+                } else {
+                    handleScrapeResultFromExtension(result);
+                }
             }
         });
 
         function handleScrapeResultFromExtension(result) {
-            const { index, tabType, success, viewSum, views, error } = result;
+            const { index, tabType, success, viewSum, views, error, userId, bio } = result;
 
             let listToSearch = [];
             if (tabType === 'unmatch') listToSearch = unmatchedTotalData;
@@ -142,6 +155,8 @@
                 item.screenshotStatus = 'done';
                 item.views = views;
                 item.viewSum = viewSum;
+                item.userId = userId || item.userId;
+                item.bio = bio || item.bio;
                 item.isRejected = viewSum < 1500;
                 showToast(`Trích xuất thành công: ${item.id || item.valC}`, 'success');
             } else {
@@ -374,11 +389,14 @@
                 for (let i = startRow; i < dataA.length; i++) {
                     const row = dataA[i];
                     if (!row || row.length === 0) continue;
-                    
-                    totalProcessedA++;
+
                     let valId = row[indexA_Id] ? String(row[indexA_Id]).trim() : "";
                     let valC = valId;
                     let valLink = row[indexA_Link] ? String(row[indexA_Link]).trim() : "";
+                    // Bỏ dòng trống: không có KOC ID lẫn link → không đếm
+                    if (!valId && !valLink) continue;
+
+                    totalProcessedA++;
                     let valGMV = row[4] !== undefined && row[4] !== null ? row[4] : "";
                     
                     // Normalize TikTok link: fallback to KOC ID if not a full URL
@@ -655,6 +673,14 @@
         }
 
         function renderTable(type) {
+            const allData = type === 'unmatch' ? unmatchedTotalData : (type === 'match' ? matchedTotalData : missingBrandDataFiltered);
+            const datEl = document.getElementById(`${type}DatCount`);
+            if (datEl) {
+                datEl.textContent = allData.filter(i => i.viewSum !== undefined && !i.isRejected).length;
+                document.getElementById(`${type}LoaiCount`).textContent = allData.filter(i => i.viewSum !== undefined && i.isRejected).length;
+                document.getElementById(`${type}ChuaCount`).textContent = allData.filter(i => i.viewSum === undefined).length;
+            }
+
             const state = pagination[type];
             const tbody = document.querySelector(`#${type}Table tbody`);
             const emptyEl = document.getElementById(`${type}Empty`);
@@ -770,7 +796,9 @@
                     .map(i => ({
                         "KOC ID": i.id,
                         "Link TikTok (Cột R)": i.link,
-                        "Tổng View 7 Video": i.viewSum
+                        "Tổng View 7 Video": i.viewSum,
+                        "User ID": i.userId || "",
+                        "Bio": i.bio || ""
                     }));
                 prefix = "KOC_Dat_Chua_Tung_Gui_Don";
             } else if (type === 'brand') {
@@ -780,7 +808,9 @@
                     "KOC ID": i.id,
                     "Các Brand Đã Có Đơn": Array.from(i.brandsSent).join(', '),
                     "Link TikTok (Cột R)": i.link,
-                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : ""
+                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : "",
+                    "User ID": i.userId || "",
+                    "Bio": i.bio || ""
                 }));
                 prefix = `KOC_Thieu_Brand_${selectedBrand}`;
             } else if (type === 'match') {
@@ -789,7 +819,9 @@
                     "KOC ID": i.id,
                     "Các Brand Đã Có Đơn": Array.from(i.brandsSent).join(', '),
                     "Link TikTok (Cột R)": i.link,
-                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : ""
+                    "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : "",
+                    "User ID": i.userId || "",
+                    "Bio": i.bio || ""
                 }));
                 prefix = "KOC_Da_Gui_Don";
             }
@@ -824,17 +856,18 @@
             const dot = document.getElementById('helperStatusDot');
             const text = document.getElementById('helperStatusText');
             const badge = document.getElementById('helperStatusBadge');
-            
+            const msgDot = document.getElementById('msgStatusDot');
+            const msgText = document.getElementById('msgStatusText');
+
+            const on = isExtensionActive();
             if (dot && text && badge) {
-                if (isExtensionActive()) {
-                    dot.className = 'status-dot green';
-                    text.textContent = 'Extension Hoạt động';
-                    badge.title = 'Extension KOC đang kích hoạt và sẵn sàng cào view!';
-                } else {
-                    dot.className = 'status-dot red';
-                    text.textContent = 'Extension chưa kích hoạt';
-                    badge.title = 'Vui lòng kiểm tra lại tiện ích trình duyệt';
-                }
+                dot.className = on ? 'status-dot green' : 'status-dot red';
+                text.textContent = on ? 'Extension Hoạt động' : 'Extension chưa kích hoạt';
+                badge.title = on ? 'Extension KOC đang kích hoạt và sẵn sàng cào view!' : 'Vui lòng kiểm tra lại tiện ích trình duyệt';
+            }
+            if (msgDot && msgText) {
+                msgDot.style.background = on ? 'var(--success)' : 'var(--danger)';
+                msgText.textContent = on ? 'Extension Hoạt động' : 'Extension chưa kích hoạt';
             }
         }
 
@@ -943,8 +976,8 @@
             const headless = document.getElementById('batchHeadful') ? !document.getElementById('batchHeadful').checked : true;
             const delayValue = document.getElementById('batchDelay') ? (parseInt(document.getElementById('batchDelay').value) * 1000 || 4000) : 4000;
             
-            // 3 threads để tránh TikTok rate-limit 403
-            const numThreads = isExtensionActive() ? 3 : 1;
+            // 2 threads: cân bằng tốc độ vs tránh Akamai chặn IP (3 luồng từng bị "Access Denied")
+            const numThreads = isExtensionActive() ? 2 : 1;
 
             // Get target list
             let sourceData = [];
@@ -958,7 +991,7 @@
 
             // Bỏ qua item đã cào thành công → hỗ trợ "Tiếp tục" sau khi dừng
             const itemsWithLinks = sourceData.filter(item => item.link && String(item.link).startsWith('http') && item.viewSum === undefined);
-            const total = itemsWithLinks.length;
+            let total = itemsWithLinks.length; // mutable: KOC bị chặn được re-queue vào cuối
             
             if (total === 0) {
                 showToast('Không tìm thấy KOC nào có link hợp lệ để cào view!', 'warning');
@@ -970,12 +1003,23 @@
             let successCount = 0;
             let completedCount = 0;
             let currentIndex = 0;
+            // Nghỉ giải lao "giống người": dừng sau mỗi 12-20 KOC để phá nhịp burst mà Akamai bắt bài
+            let nextBreakAt = 12 + Math.floor(Math.random() * 9);
+            // Backoff khi bị chặn IP: cả 2 luồng cùng nghỉ tới blockPauseUntil, thời gian nghỉ tăng dần
+            let blockPauseUntil = 0;
+            let blockBackoff = 60000;
 
             const mainProgressText = document.getElementById('mainProgressText');
             if (mainProgressText) mainProgressText.textContent = `Đang khởi chạy ${numThreads} luồng cào view tự động...`;
 
             const runWorker = async (workerId) => {
                 while (currentIndex < total && !batchCancelRequested) {
+                    // Đang trong thời gian backoff vì bị chặn IP → cả 2 luồng cùng chờ
+                    while (Date.now() < blockPauseUntil && !batchCancelRequested) {
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
+                    if (batchCancelRequested) break;
+
                     const taskIndex = currentIndex++;
                     if (taskIndex >= total) break;
 
@@ -1001,8 +1045,8 @@
                     try {
                         let result;
                         if (isExtensionActive()) {
-                            // Stagger lần đầu + delay 2s sau mỗi item để tránh TikTok rate-limit
-                            const staggerDelay = workerId * 2000;
+                            // Stagger luồng + jitter ngẫu nhiên → 2 luồng không bắn request cùng nhịp (giống người)
+                            const staggerDelay = workerId * 2000 + Math.random() * 1500;
                             await new Promise(resolve => setTimeout(resolve, staggerDelay));
 
                             result = await scrapeViaExtension(item.link, absoluteIndex, currentBatchType, workerId);
@@ -1011,10 +1055,29 @@
                                 await new Promise(r => setTimeout(r, 3000));
                                 result = await scrapeViaExtension(item.link, absoluteIndex, currentBatchType, workerId);
                             }
-                            // Cooldown sau mỗi item
-                            await new Promise(r => setTimeout(r, 2000));
+                            // Cooldown 3-5s có jitter sau mỗi item → nhịp request giống người, tránh Akamai
+                            await new Promise(r => setTimeout(r, 3000 + Math.random() * 2000));
                         } else {
                             result = { success: false, error: 'Extension not active' };
+                        }
+
+                        // Bị chặn IP → backoff toàn cục + cào lại chính KOC này (tối đa 3 lần)
+                        if (!batchCancelRequested && result && result.error === 'TIKTOK_BLOCKED') {
+                            item.blockRetries = (item.blockRetries || 0) + 1;
+                            if (item.blockRetries < 3) {
+                                // Làn chặn mới (chưa đang nghỉ) → đặt mốc nghỉ chung, tăng thời gian nghỉ dần
+                                if (Date.now() >= blockPauseUntil) {
+                                    blockPauseUntil = Date.now() + blockBackoff;
+                                    if (mainProgressText) mainProgressText.textContent = `Bị chặn IP — nghỉ ${Math.round(blockBackoff/1000)}s cho "nguội" rồi cào lại... ${completedCount}/${total}`;
+                                    blockBackoff = Math.min(Math.round(blockBackoff * 1.5), 300000);
+                                }
+                                item.screenshotStatus = 'pending';
+                                itemsWithLinks.push(item); // re-queue vào cuối
+                                total++;
+                                if (badge) { badge.textContent = 'CHỜ THỬ LẠI'; badge.className = 'batch-status-badge running'; }
+                                continue; // không tính completed, không đánh dấu lỗi
+                            }
+                            // hết 3 lượt mà vẫn chặn → rơi xuống nhánh đánh dấu lỗi bên dưới
                         }
 
                         if (result.success && !batchCancelRequested) {
@@ -1065,6 +1128,14 @@
                     if (modalPercentText) modalPercentText.textContent = `${percent}%`;
 
                     renderTable(currentBatchType);
+
+                    // Nghỉ giải lao giống người: sau mỗi 12-20 KOC, dừng 15-30s phá nhịp burst → tránh Akamai
+                    if (!batchCancelRequested && completedCount >= nextBreakAt && completedCount < total) {
+                        nextBreakAt = completedCount + 12 + Math.floor(Math.random() * 9);
+                        const breakMs = 15000 + Math.random() * 15000;
+                        if (mainProgressText) mainProgressText.textContent = `Nghỉ giải lao ${Math.round(breakMs/1000)}s (giống người dùng)... ${completedCount}/${total}`;
+                        await new Promise(r => setTimeout(r, breakMs));
+                    }
                 }
             };
 
@@ -1125,6 +1196,195 @@
             if (isExtensionActive()) {
                 closeScrapeTabViaExtension();
             }
+        }
+
+        // --- BULK MESSAGING ---
+        let msgData = [];
+        let msgFile = null;
+        let msgBatchActive = false;
+        let msgCancelRequested = false;
+        let msgResolvers = {};
+
+        // File drag-drop setup
+        (function() {
+            const dz = document.getElementById('msgDropzone');
+            const input = document.getElementById('msgFileInput');
+            if (!dz || !input) return;
+            dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+            dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+            dz.addEventListener('drop', e => {
+                e.preventDefault(); dz.classList.remove('dragover');
+                if (e.dataTransfer.files[0]) handleMsgFile(e.dataTransfer.files[0]);
+            });
+            input.addEventListener('change', () => { if (input.files[0]) handleMsgFile(input.files[0]); });
+        })();
+
+        function handleMsgFile(file) {
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (!['xlsx','xls','csv'].includes(ext)) { showToast('Định dạng không hỗ trợ!', 'error'); return; }
+            msgFile = file;
+            document.getElementById('msgDropzone').style.display = 'none';
+            document.getElementById('msgFileInfo').style.display = 'flex';
+            document.getElementById('msgFileName').textContent = file.name;
+            const kb = (file.size / 1024).toFixed(1);
+            document.getElementById('msgFileSize').textContent = `(${kb > 1024 ? (kb/1024).toFixed(1)+' MB' : kb+' KB'})`;
+            showToast(`Đã nhận file: ${file.name}`, 'success');
+        }
+
+        function clearMsgFile() {
+            msgFile = null;
+            document.getElementById('msgFileInput').value = '';
+            document.getElementById('msgFileInfo').style.display = 'none';
+            document.getElementById('msgDropzone').style.display = 'flex';
+        }
+
+        function sendMsgViaExtension(url, text, index, userId) {
+            return new Promise(resolve => {
+                msgResolvers[index] = resolve;
+                window.postMessage({ type: "FROM_PAGE", action: "SEND_MESSAGE", url, text, index, userId }, "*");
+                setTimeout(() => {
+                    if (msgResolvers[index]) { delete msgResolvers[index]; resolve({ success: false, error: 'TIMEOUT' }); }
+                }, 90000);
+            });
+        }
+
+        function updateMsgProgress(done, total) {
+            const pct = total > 0 ? Math.round(done / total * 100) : 0;
+            document.getElementById('msgProgressBar').style.width = pct + '%';
+            document.getElementById('msgProgressText').textContent = `Đang xử lý ${done}/${total}...`;
+        }
+
+        function renderMsgTable() {
+            const tbody = document.querySelector('#msgTable tbody');
+            tbody.innerHTML = '';
+            let sent = 0, err = 0, pending = 0;
+            msgData.forEach((item, i) => {
+                if (item.msgStatus === 'sent') sent++;
+                else if (item.msgStatus === 'error') err++;
+                else pending++;
+                const tr = document.createElement('tr');
+                let statusHtml = '<span style="color:var(--text-muted);">Chờ gửi</span>';
+                if (item.msgStatus === 'pending') statusHtml = '<span class="status-dot-text"><span class="status-dot yellow pulse"></span> Đang gửi...</span>';
+                else if (item.msgStatus === 'sent') statusHtml = '<span class="badge-accept">ĐÃ GỬI</span>';
+                else if (item.msgStatus === 'error') statusHtml = `<span class="badge-reject" title="${item.msgError || ''}">LỖI</span>`;
+                const linkHtml = item.link && item.link.startsWith('http')
+                    ? `<a href="${item.link}" target="_blank" class="link-tiktok">Mở Link <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></a>`
+                    : (item.link || '-');
+                tr.innerHTML = `<td>${i+1}</td><td style="font-weight:600;">${item.kocId || '-'}</td><td>${linkHtml}</td><td>${statusHtml}</td>`;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('msgSentCount').textContent = sent;
+            document.getElementById('msgErrCount').textContent = err;
+            document.getElementById('msgPendingCount').textContent = pending;
+        }
+
+        async function startBulkMessaging() {
+            if (!isExtensionActive()) { showToast('Extension chưa hoạt động! Vui lòng kiểm tra lại.', 'error'); return; }
+            if (!msgFile) { showToast('Vui lòng chọn file danh sách KOC!', 'error'); return; }
+            const template = document.getElementById('msgTemplate').value.trim();
+            if (!template) { showToast('Vui lòng nhập nội dung tin nhắn mẫu!', 'error'); return; }
+
+            const skipHeader = document.getElementById('msgSkipHeader').checked;
+            const colId = excelLetterToCol(document.getElementById('msgColId').value);
+            const colLink = excelLetterToCol(document.getElementById('msgColLink').value);
+            const delayMs = (parseInt(document.getElementById('msgDelay').value) || 5) * 1000;
+
+            let rows;
+            try { rows = await readExcel(msgFile); }
+            catch(e) { showToast('Lỗi đọc file: ' + e.message, 'error'); return; }
+
+            // Tự dò cột "User ID" trong header (file xuất từ tab quét đã có sẵn cột này)
+            let colUserId = -1;
+            if (skipHeader && rows[0]) {
+                colUserId = rows[0].findIndex(c => /user\s*id/i.test(String(c || '')));
+            }
+
+            const startRow = skipHeader ? 1 : 0;
+            msgData = [];
+            for (let i = startRow; i < rows.length; i++) {
+                const row = rows[i];
+                if (!row || row.length === 0) continue;
+                const kocId = String(row[colId] || '').trim();
+                let link = String(row[colLink] || '').trim();
+                if (!link && kocId) {
+                    const clean = kocId.startsWith('@') ? kocId.slice(1) : kocId;
+                    link = `https://www.tiktok.com/@${clean}`;
+                }
+                const userId = colUserId >= 0 ? String(row[colUserId] || '').trim() : '';
+                if (kocId || link) msgData.push({ kocId, link, userId, msgStatus: 'idle', msgError: '' });
+            }
+
+            if (!msgData.length) { showToast('Không tìm thấy dữ liệu hợp lệ trong file!', 'error'); return; }
+
+            msgBatchActive = true;
+            msgCancelRequested = false;
+            document.getElementById('startMsgBtn').style.display = 'none';
+            document.getElementById('stopMsgBtn').style.display = 'flex';
+            document.getElementById('msgTableWrap').style.display = 'block';
+            document.getElementById('msgProgressBarWrap').style.display = 'block';
+            renderMsgTable();
+
+            const total = msgData.length;
+            let done = 0;
+
+            for (let i = 0; i < total; i++) {
+                if (msgCancelRequested) break;
+                const item = msgData[i];
+                if (!item.link || !item.link.startsWith('http')) { done++; continue; }
+
+                item.msgStatus = 'pending';
+                renderMsgTable();
+                updateMsgProgress(done, total);
+
+                const text = template.replace(/\{KOC_ID\}/g, item.kocId);
+                const result = await sendMsgViaExtension(item.link, text, i, item.userId);
+
+                item.msgStatus = result.success ? 'sent' : 'error';
+                item.msgError = result.error || '';
+                done++;
+                renderMsgTable();
+                updateMsgProgress(done, total);
+
+                if (!msgCancelRequested && i < total - 1) {
+                    // Bị TikTok chặn → nghỉ lâu (backoff) trước khi gửi tiếp
+                    if (result.error === 'TIKTOK_BLOCKED') {
+                        document.getElementById('msgProgressText').textContent = `Bị TikTok chặn tạm thời, nghỉ 60s...`;
+                        await new Promise(r => setTimeout(r, 60000));
+                    }
+                    // ±30% jitter để tránh TikTok detect pattern
+                    const jitter = delayMs * 0.3 * (Math.random() * 2 - 1);
+                    await new Promise(r => setTimeout(r, delayMs + jitter));
+                }
+            }
+
+            msgBatchActive = false;
+            document.getElementById('startMsgBtn').style.display = 'flex';
+            document.getElementById('stopMsgBtn').style.display = 'none';
+
+            const successCount = msgData.filter(d => d.msgStatus === 'sent').length;
+            const msg = msgCancelRequested
+                ? `Đã dừng. Gửi thành công ${successCount}/${done}.`
+                : `Hoàn thành! Gửi thành công ${successCount}/${total}.`;
+            document.getElementById('msgProgressText').textContent = msg;
+            showToast(msg, successCount > 0 ? 'success' : 'error');
+
+            window.postMessage({ type: "FROM_PAGE", action: "CLOSE_MESSAGE_TAB" }, "*");
+        }
+
+        function stopBulkMessaging() {
+            msgCancelRequested = true;
+            msgBatchActive = false;
+            // Unblock bất kỳ sendMsgViaExtension nào đang chờ
+            Object.keys(msgResolvers).forEach(k => {
+                msgResolvers[k]({ success: false, error: 'CANCELLED' });
+                delete msgResolvers[k];
+            });
+            document.getElementById('startMsgBtn').style.display = 'flex';
+            document.getElementById('stopMsgBtn').style.display = 'none';
+            const done = msgData.filter(d => d.msgStatus !== 'idle' && d.msgStatus !== 'pending').length;
+            const sent = msgData.filter(d => d.msgStatus === 'sent').length;
+            document.getElementById('msgProgressText').textContent = `Đã dừng. Gửi thành công ${sent}/${done}.`;
+            window.postMessage({ type: "FROM_PAGE", action: "CLOSE_MESSAGE_TAB" }, "*");
         }
 
         // Open Screenshots Folder in OS File Manager

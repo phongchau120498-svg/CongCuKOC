@@ -66,7 +66,14 @@ function sendResult(playCounts) {
     if (resultSent) return;
     resultSent = true;
     const viewSum = playCounts.slice(3, 10).reduce((a, b) => a + b, 0);
-    chrome.runtime.sendMessage({ action: "SCRAPE_RESULT", success: true, viewSum, views: playCounts });
+    const username = (() => {
+        const parts = window.location.href.split('@');
+        return parts.length > 1 ? parts[1].split('/')[0].split('?')[0].toLowerCase() : null;
+    })();
+    const info = username ? extractProfileUserInfo(username) : null;
+    // Bio: ưu tiên SSR signature, fallback đọc DOM (tab đang visible)
+    const bio = info?.bio || cleanBio(document.querySelector('[data-e2e="user-bio"]')?.textContent) || '';
+    chrome.runtime.sendMessage({ action: "SCRAPE_RESULT", success: true, viewSum, views: playCounts, userId: info?.userId || null, bio });
 }
 
 function sendError(error) {
@@ -186,3 +193,111 @@ function parseViewText(str) {
 
 // Thử SSR + XHR 3s, sau đó DOM fallback chạy song song
 setTimeout(() => { if (!resultSent) fallbackDOM(); }, 3000);
+
+// --- MESSAGING ---
+
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message.action === "DO_SEND_MESSAGE") {
+        sendResponse({ ok: true });
+        doSendMessage(message.text);
+    }
+});
+
+async function waitForEl(selectors, timeout = 15000) {
+    const list = selectors.split(',').map(s => s.trim());
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+        for (const sel of list) {
+            const el = document.querySelector(sel);
+            if (el) return el;
+        }
+        await new Promise(r => setTimeout(r, 400));
+    }
+    return null;
+}
+
+// Đọc SSR JSON, tìm user object của profile đang xem → {userId, bio}
+function extractProfileUserInfo(username) {
+    for (const ssrId of ['__UNIVERSAL_DATA_FOR_REHYDRATION__', 'SIGI_STATE']) {
+        const el = document.getElementById(ssrId);
+        if (!el) continue;
+        try {
+            const info = findUserInObj(JSON.parse(el.textContent), username);
+            if (info) return info;
+        } catch(_) {}
+    }
+    return null;
+}
+// Làm sạch bio: NFKC gập chữ/số "kiểu" (𝟎𝟗, ＰＨ, ①②) về ASCII,
+// rồi xóa variation selector + combining enclosing keycap → keycap emoji "0️⃣3️⃣" thành "03"
+function cleanBio(s) {
+    if (typeof s !== 'string') return '';
+    return s.normalize('NFKC').replace(/[︀-️⃐-⃿]/g, '').trim();
+}
+
+// Ưu tiên object có bio thật; object author trong video có id nhưng thiếu signature → chỉ giữ dự phòng
+function findUserInObj(rootObj, username) {
+    let fallback = null;
+    function walk(obj, depth) {
+        if (!obj || typeof obj !== 'object' || depth > 10) return null;
+        if (typeof obj.uniqueId === 'string' && obj.uniqueId.toLowerCase() === username &&
+            obj.id && /^\d{10,}$/.test(String(obj.id))) {
+            const bio = cleanBio(obj.signature);
+            const info = { userId: String(obj.id), bio };
+            if (bio) return info;
+            if (!fallback) fallback = info;
+        }
+        for (const key in obj) {
+            const r = walk(obj[key], depth + 1);
+            if (r) return r;
+        }
+        return null;
+    }
+    return walk(rootObj, 0) || fallback;
+}
+
+async function doSendMessage(text) {
+    try {
+        // Trang bị TikTok chặn (403) → báo backoff, đừng đâm tiếp
+        const bodyText = document.body?.innerText || '';
+        if (bodyText.includes('was denied') || bodyText.includes('HTTP ERROR 403')) {
+            chrome.runtime.sendMessage({ action: 'MESSAGE_RESULT', success: false, error: 'TIKTOK_BLOCKED' });
+            return;
+        }
+
+        // Case 1: Tìm ô nhập trong document này (có thể là iframe messages)
+        const input = await waitForEl(
+            'div.public-DraftEditor-content[contenteditable="true"], [data-e2e="im-chat-input"]',
+            5000
+        );
+        if (input) {
+            await new Promise(r => setTimeout(r, 300 + Math.random() * 500));
+            // background.js handle: focus → insertText (CDP) → chờ 1.5s → Enter, trả về {ok}
+            const exec = await new Promise(resolve => {
+                chrome.runtime.sendMessage({ action: 'EXEC_MAIN_WORLD', text }, (resp) => { chrome.runtime.lastError; resolve(resp); });
+            });
+            await new Promise(r => setTimeout(r, 500 + Math.random() * 500));
+            const ok = !!(exec && exec.ok);
+            chrome.runtime.sendMessage({ action: 'MESSAGE_RESULT', success: ok, error: ok ? '' : 'SEND_FAILED' });
+            return;
+        }
+
+        // Case 2: Không có ô nhập → đây là trang profile → extract userId và navigate
+        const msgBtn = document.querySelector('[data-e2e="message-button"], [data-e2e="message-icon"]');
+        if (msgBtn) {
+            const username = window.location.pathname.split('@')[1]?.split(/[/?#]/)[0]?.toLowerCase();
+            const userId = username ? extractProfileUserInfo(username)?.userId : null;
+            if (userId) {
+                window.location.href = `https://www.tiktok.com/business-suite/messages?from=homepage&u=${userId}`;
+            } else {
+                msgBtn.click();
+            }
+            return; // background.js onUpdated sẽ gửi lại DO_SEND_MESSAGE
+        }
+
+        // Case 3: Frame không liên quan → im lặng, frame đúng sẽ tự xử lý
+
+    } catch(e) {
+        chrome.runtime.sendMessage({ action: 'MESSAGE_RESULT', success: false, error: e.message });
+    }
+}
