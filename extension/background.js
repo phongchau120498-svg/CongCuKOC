@@ -220,6 +220,28 @@ function loadInWorkerTab(workerId, url, callback) {
     });
 }
 
+// Tải ảnh bìa video (URL có x-signature) về dưới dạng base64 để nhúng thẳng vào trang,
+// né chặn hotlink/CORS. Extension có host_permissions tiktokcdn nên đọc được bytes.
+async function fetchCoversAsDataUrls(urls, cb) {
+    const toDataUrl = async (url) => {
+        try {
+            const resp = await fetch(url);
+            if (!resp.ok) { console.warn('[KOC] cover fetch HTTP', resp.status, url.slice(0, 80)); return ''; }
+            const buf = await resp.arrayBuffer();
+            const bytes = new Uint8Array(buf);
+            let bin = '';
+            for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+            const mime = resp.headers.get('content-type') || 'image/jpeg';
+            return `data:${mime};base64,${btoa(bin)}`;
+        } catch (e) { console.warn('[KOC] cover fetch ERROR', e.message, url.slice(0, 80)); return ''; }
+    };
+    try {
+        const covers = (await Promise.all(urls.slice(0, 9).map(toDataUrl))).filter(Boolean);
+        console.log('[KOC] fetched covers:', covers.length, '/', urls.length);
+        cb(covers);
+    } catch (_) { cb([]); }
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Inject text vào main world để bypass TikTok page CSP
     if (message.action === "EXEC_MAIN_WORLD") {
@@ -298,19 +320,30 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         const tabId = sender.tab.id;
         const request = pendingRequests[tabId];
         if (request) {
-            chrome.tabs.sendMessage(request.senderTabId, {
-                action: "SCRAPE_FINISHED",
-                index: request.index,
-                tabType: request.tabType,
-                url: request.url,
-                success: message.success,
-                viewSum: message.viewSum,
-                views: message.views,
-                userId: message.userId,
-                bio: message.bio,
-                error: message.error
-            });
-            delete pendingRequests[tabId];
+            const forward = (covers) => {
+                chrome.tabs.sendMessage(request.senderTabId, {
+                    action: "SCRAPE_FINISHED",
+                    index: request.index,
+                    tabType: request.tabType,
+                    url: request.url,
+                    success: message.success,
+                    viewSum: message.viewSum,
+                    views: message.views,
+                    covers,
+                    userId: message.userId,
+                    bio: message.bio,
+                    error: message.error
+                });
+                delete pendingRequests[tabId];
+            };
+            // Chỉ tải ảnh bìa cho KOC đạt (viewSum >= 1500, đồng bộ ngưỡng isRejected ở app.js)
+            // Background tự fetch URL có x-signature → bytes → base64, né chặn hotlink + CORS khi hiển thị ở localhost
+            console.log('[KOC] SCRAPE_RESULT success=', message.success, 'viewSum=', message.viewSum, 'coverUrls=', (message.coverUrls || []).length);
+            if (message.success && message.viewSum >= 1500 && Array.isArray(message.coverUrls) && message.coverUrls.length) {
+                fetchCoversAsDataUrls(message.coverUrls, forward);
+            } else {
+                forward([]);
+            }
         }
     }
 

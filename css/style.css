@@ -1146,6 +1146,47 @@
             100% { transform: scale(1); opacity: 1; }
         }
 
+        .cover-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 3px;
+            max-width: 160px;
+        }
+
+        .cover-grid img {
+            width: 100%;
+            aspect-ratio: 3 / 4;
+            object-fit: cover;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+
+        .cover-grid img:hover {
+            transform: scale(1.08);
+            box-shadow: var(--shadow-md);
+        }
+
+        .cover-grid { cursor: pointer; }
+
+        .lightbox-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            width: max-content;
+            max-width: 92vw;
+            max-height: 88vh;
+            overflow-y: auto;
+        }
+
+        .lightbox-grid img {
+            height: 26vh;
+            width: auto;
+            aspect-ratio: 3 / 4;
+            object-fit: cover;
+            border-radius: 8px;
+        }
+
         .screenshot-cell {
             display: flex;
             align-items: center;

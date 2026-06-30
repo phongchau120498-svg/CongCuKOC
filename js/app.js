@@ -94,6 +94,17 @@
 
         // --- CHROME EXTENSION SCRAPER INTEGRATION ---
         let activeScrapeResolvers = {}; // index -> resolve function
+        let coversCache = {}; // koc id -> [base64 covers] (cho lightbox xem 1 lần cả 9 ảnh)
+        const selectedUnmatch = new Set(); // id các KOC đạt được tick để xuất riêng
+
+        function toggleSelectUnmatch(key, checked) {
+            if (checked) selectedUnmatch.add(key); else selectedUnmatch.delete(key);
+            updateSelectedCount();
+        }
+        function updateSelectedCount() {
+            const el = document.getElementById('unmatchSelCount');
+            if (el) el.textContent = selectedUnmatch.size;
+        }
 
         function isExtensionActive() {
             return document.documentElement.hasAttribute('data-koc-extension-active');
@@ -141,7 +152,7 @@
         });
 
         function handleScrapeResultFromExtension(result) {
-            const { index, tabType, success, viewSum, views, error, userId, bio } = result;
+            const { index, tabType, success, viewSum, views, covers, error, userId, bio } = result;
 
             let listToSearch = [];
             if (tabType === 'unmatch') listToSearch = unmatchedTotalData;
@@ -157,6 +168,7 @@
                 item.viewSum = viewSum;
                 item.userId = userId || item.userId;
                 item.bio = bio || item.bio;
+                item.covers = (covers && covers.length) ? covers : (item.covers || []);
                 item.isRejected = viewSum < 1500;
                 showToast(`Trích xuất thành công: ${item.id || item.valC}`, 'success');
             } else {
@@ -716,6 +728,17 @@
                     linkHtml = item.link;
                 }
 
+                // Lưới ảnh bìa video (đã tải base64 lúc cào) → bấm 1 cái xem cả 9 ảnh để lia nhanh
+                let coverHtml = '-';
+                if (item.covers && item.covers.length) {
+                    const key = item.id || item.valC;
+                    coversCache[key] = item.covers;
+                    const imgs = item.covers.slice(0, 9).map(u => `<img src="${u}">`).join('');
+                    coverHtml = `<div class="cover-grid" onclick="openCoversLightbox('${String(key).replace(/'/g, "\\'")}')" title="Bấm để xem ${item.covers.length} ảnh bìa">${imgs}</div>`;
+                } else if (item.screenshotStatus === 'pending') {
+                    coverHtml = `<span class="screenshot-loading"><span class="spinner-small"></span></span>`;
+                }
+
                 if (type === 'unmatch') {
                     let statusHtml = '<span style="color: var(--text-muted);">Chờ cào view</span>';
                     let viewSumHtml = '-';
@@ -736,13 +759,22 @@
                         }
                     }
                     
+                    // Ô tick chỉ cho KOC đạt (để xuất riêng nhóm được chọn)
+                    const selKey = item.id || item.valC;
+                    const isDat = item.viewSum !== undefined && !item.isRejected;
+                    const selectHtml = isDat
+                        ? `<input type="checkbox" class="row-select" ${selectedUnmatch.has(selKey) ? 'checked' : ''} onclick="toggleSelectUnmatch('${String(selKey).replace(/'/g, "\\'")}', this.checked)">`
+                        : '';
+
                     tr.innerHTML = `
+                        <td>${selectHtml}</td>
                         <td>${stt}</td>
                         <td style="font-weight: 600;">${item.id || '-'}</td>
                         <td>${linkHtml}</td>
                         <td>${item.gmv !== undefined && item.gmv !== '' ? formatGMV(item.gmv) : '-'}</td>
                         <td>${viewSumHtml}</td>
                         <td>${statusHtml}</td>
+                        <td>${coverHtml}</td>
                     `;
                 } else { // match & brand have brandsSent column
                     let brandsHtml = '';
@@ -762,6 +794,7 @@
                         <td>${brandsHtml || '<span style="color: var(--text-muted); font-size: 0.75rem;">Trùng nhưng rỗng Brand</span>'}</td>
                         <td>${linkHtml}</td>
                         <td>${viewSumHtml}</td>
+                        <td>${coverHtml}</td>
                     `;
                 }
                 tbody.appendChild(tr);
@@ -785,22 +818,25 @@
         }
 
         // --- EXCEL DATA EXPORT ---
-        function downloadTableData(type) {
+        function downloadTableData(type, mode = 'all') {
             let dataToExport = [];
             let prefix = "";
 
             if (type === 'unmatch') {
                 if (!unmatchedTotalData.length) return;
-                dataToExport = pagination.unmatch.filtered
-                    .filter(i => i.viewSum !== undefined && !i.isRejected)
-                    .map(i => ({
+                let src = pagination.unmatch.filtered.filter(i => i.viewSum !== undefined && !i.isRejected);
+                if (mode === 'selected') {
+                    src = src.filter(i => selectedUnmatch.has(i.id || i.valC));
+                    if (!src.length) { showToast('Chưa tick chọn KOC đạt nào để xuất!', 'warning'); return; }
+                }
+                dataToExport = src.map(i => ({
                         "KOC ID": i.id,
                         "Link TikTok (Cột R)": i.link,
                         "Tổng View 7 Video": i.viewSum,
                         "User ID": i.userId || "",
                         "Bio": i.bio || ""
                     }));
-                prefix = "KOC_Dat_Chua_Tung_Gui_Don";
+                prefix = mode === 'selected' ? "KOC_Dat_Da_Chon" : "KOC_Dat_Chua_Tung_Gui_Don";
             } else if (type === 'brand') {
                 const selectedBrand = document.getElementById('brandSelector').value;
                 if (!selectedBrand || !missingBrandDataFiltered.length) return;
@@ -896,10 +932,31 @@
         function openLightbox(url, title) {
             const modal = document.getElementById('lightboxModal');
             const img = document.getElementById('lightboxImg');
+            const grid = document.getElementById('lightboxGrid');
             const caption = document.getElementById('lightboxCaption');
-            
+
+            grid.style.display = 'none';
+            grid.innerHTML = '';
+            img.style.display = 'block';
             img.src = url;
             caption.textContent = `Ảnh chụp kênh KOC: ${title}`;
+            modal.style.display = 'flex';
+        }
+
+        // Bấm 1 cái → hiện cả 9 ảnh bìa dạng lưới lớn để lia nhanh 1 lần
+        function openCoversLightbox(key) {
+            const covers = coversCache[key] || [];
+            if (!covers.length) return;
+            const modal = document.getElementById('lightboxModal');
+            const img = document.getElementById('lightboxImg');
+            const grid = document.getElementById('lightboxGrid');
+            const caption = document.getElementById('lightboxCaption');
+
+            img.style.display = 'none';
+            img.src = '';
+            grid.style.display = 'grid';
+            grid.innerHTML = covers.map(u => `<img src="${u}">`).join('');
+            caption.textContent = `Ảnh bìa kênh KOC: ${key} (${covers.length} video)`;
             modal.style.display = 'flex';
         }
 
@@ -1084,6 +1141,7 @@
                             item.screenshotStatus = 'idle';
                             item.views = result.views;
                             item.viewSum = result.viewSum;
+                            item.covers = result.covers || [];
                             item.isRejected = result.isRejected;
                             successCount++;
                             if (badge) {

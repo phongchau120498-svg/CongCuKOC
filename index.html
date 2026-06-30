@@ -266,9 +266,13 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
                                 Tự Động Cào View Kênh
                             </button>
-                            <button class="btn-download" onclick="downloadTableData('unmatch')">
+                            <button class="btn-download" onclick="downloadTableData('unmatch', 'all')">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-                                Xuất Excel
+                                Xuất tất cả đạt
+                            </button>
+                            <button class="btn-download" onclick="downloadTableData('unmatch', 'selected')">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+                                Xuất đã chọn (<span id="unmatchSelCount">0</span>)
                             </button>
                         </div>
                     </div>
@@ -283,12 +287,14 @@
                         <table id="unmatchTable">
                             <thead>
                                 <tr>
+                                    <th style="width: 44px;">Chọn</th>
                                     <th style="width: 70px;">STT</th>
                                     <th>KOC ID</th>
                                     <th>Link TikTok</th>
                                     <th>GMV</th>
                                     <th>Tổng View 7 Video</th>
                                     <th>Trạng thái</th>
+                                    <th style="width: 170px;">Chủ đề kênh</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -357,6 +363,7 @@
                                     <th>Các Brand Đã Có Đơn</th>
                                     <th>Link TikTok</th>
                                     <th>Tổng View 7 Video</th>
+                                    <th style="width: 170px;">Chủ đề kênh</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -425,6 +432,7 @@
                                     <th>Các Brand Đã Có Đơn</th>
                                     <th>Link TikTok</th>
                                     <th>Tổng View 7 Video</th>
+                                    <th style="width: 170px;">Chủ đề kênh</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -588,6 +596,7 @@
         <div class="lightbox-content" onclick="event.stopPropagation()">
             <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
             <img src="" class="lightbox-img" id="lightboxImg" alt="Full Screenshot">
+            <div class="lightbox-grid" id="lightboxGrid" style="display:none;"></div>
             <p class="lightbox-caption" id="lightboxCaption"></p>
         </div>
     </div>

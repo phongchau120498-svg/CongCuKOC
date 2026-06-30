@@ -61,10 +61,42 @@ interceptor.remove();
 // --- Logic xử lý kết quả ---
 
 let resultSent = false;
+// Ảnh bìa bắt được từ JSON API (không phụ thuộc render trong tab ẩn) — nguồn chắc ăn nhất
+let capturedCovers = [];
 
-function sendResult(playCounts) {
+// Lấy URL ảnh bìa video từ lưới DOM (URL có x-signature → background tải về được).
+function getDomCoverUrls() {
+    const urls = [];
+    document.querySelectorAll('[data-e2e="user-post-item"], [data-e2e="user-post-item-list"] > div').forEach(item => {
+        const img = item.querySelector('img');
+        const src = img && (img.currentSrc || img.src || img.getAttribute('src'));
+        if (src && src.startsWith('http')) { urls.push(src); return; }
+        // ảnh chưa load → lấy từ <source srcset> trong <picture>
+        const source = item.querySelector('picture source');
+        const ss = source && source.getAttribute('srcset');
+        if (ss) { const first = ss.split(',')[0].trim().split(' ')[0]; if (first.startsWith('http')) urls.push(first); }
+    });
+    return [...new Set(urls)].slice(0, 9);
+}
+
+async function sendResult(playCounts, coverUrls = []) {
     if (resultSent) return;
     resultSent = true;
+    // Gom đủ tới 9 ảnh: ưu tiên JSON API (capturedCovers), bù bằng cuộn ép lazy-load DOM.
+    // Có 9 ngay từ API thì thoát liền (nhanh); thiếu mới cuộn, chờ tối đa ~6s.
+    const deadline = Date.now() + 6000;
+    let y = 0;
+    while (Date.now() < deadline) {
+        let best = capturedCovers;
+        const dom = getDomCoverUrls();
+        if (dom.length > best.length) best = dom;
+        if (best.length > coverUrls.length) coverUrls = best;
+        if (coverUrls.length >= 9) break;
+        y += 600; window.scrollTo(0, y);                  // cuộn để thumbnail vào viewport → tải thêm
+        await new Promise(r => setTimeout(r, 400));
+    }
+    window.scrollTo(0, 0);
+    console.log('[KOC] coverUrls collected:', coverUrls.length, '(xhr:', capturedCovers.length, ')');
     const viewSum = playCounts.slice(3, 10).reduce((a, b) => a + b, 0);
     const username = (() => {
         const parts = window.location.href.split('@');
@@ -73,7 +105,7 @@ function sendResult(playCounts) {
     const info = username ? extractProfileUserInfo(username) : null;
     // Bio: ưu tiên SSR signature, fallback đọc DOM (tab đang visible)
     const bio = info?.bio || cleanBio(document.querySelector('[data-e2e="user-bio"]')?.textContent) || '';
-    chrome.runtime.sendMessage({ action: "SCRAPE_RESULT", success: true, viewSum, views: playCounts, userId: info?.userId || null, bio });
+    chrome.runtime.sendMessage({ action: "SCRAPE_RESULT", success: true, viewSum, views: playCounts, coverUrls, userId: info?.userId || null, bio });
 }
 
 function sendError(error) {
@@ -82,16 +114,19 @@ function sendError(error) {
     chrome.runtime.sendMessage({ action: "SCRAPE_RESULT", success: false, error });
 }
 
-// Path 1: XHR interception — TikTok gọi API, ta bắt response
+// Path 1: XHR interception — TikTok gọi API, ta bắt response.
+// KHÔNG once: API có thể bắn nhiều lần (phân trang) → luôn cập nhật ảnh bìa từ JSON (nguồn không cần render)
 window.addEventListener('__koc_items__', (e) => {
     try {
         const items = JSON.parse(e.detail);
+        const covers = items.map(it => it.video?.cover || it.video?.originCover || '').filter(Boolean);
+        if (covers.length) capturedCovers = covers.slice(0, 9);
         const plays = items
             .map(it => parseInt(it.stats?.playCount ?? it.playCount ?? 0))
             .filter(n => n >= 0);
-        if (plays.length >= 4) sendResult(plays);
+        if (plays.length >= 4) sendResult(plays, capturedCovers);
     } catch (_) {}
-}, { once: true });
+});
 
 // Path 2: SSR JSON — một số kênh vẫn có itemList trong HTML (fast path)
 function trySSRJson() {
@@ -107,8 +142,8 @@ function trySSRJson() {
             if (!new RegExp('"uniqueId"\\s*:\\s*"' + urlUsername + '"', 'i').test(el.textContent)) continue;
         }
         try {
-            const plays = extractPlays(JSON.parse(el.textContent));
-            if (plays.length >= 4) { sendResult(plays); return; }
+            const { plays, covers } = extractPlays(JSON.parse(el.textContent));
+            if (plays.length >= 4) { sendResult(plays, covers); return; }
         } catch (_) {}
     }
 }
@@ -135,12 +170,16 @@ function extractPlays(jsonObj) {
 
     find(jsonObj);
     const plays = [];
+    const covers = [];
     items.forEach(it => {
         const id = it.id || it.video?.id;
         const n = parseInt(it.playCount ?? it.stats?.playCount);
-        if (!isNaN(n) && id && !seen.has(id)) { seen.add(id); plays.push(n); }
+        if (!isNaN(n) && id && !seen.has(id)) {
+            seen.add(id); plays.push(n);
+            covers.push(it.video?.cover || it.video?.originCover || '');
+        }
     });
-    return plays;
+    return { plays, covers: covers.filter(Boolean).slice(0, 9) };
 }
 
 // Thử SSR ngay

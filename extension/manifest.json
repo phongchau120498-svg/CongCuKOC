@@ -11,6 +11,8 @@
   ],
   "host_permissions": [
     "https://*.tiktok.com/*",
+    "https://*.tiktokcdn.com/*",
+    "https://*.tiktokcdn-us.com/*",
     "http://localhost/*",
     "http://localhost:*/*",
     "http://127.0.0.1/*",
