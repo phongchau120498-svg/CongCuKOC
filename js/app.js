@@ -16,14 +16,18 @@
             updateThemeIcon(true);
         }
 
-        themeToggle.addEventListener('click', () => {
-            const isDark = document.body.classList.toggle('dark-theme');
-            localStorage.setItem('theme', isDark ? 'dark' : 'light');
-            updateThemeIcon(isDark);
-            showToast(isDark ? 'Đã kích hoạt chế độ Tối' : 'Đã kích hoạt chế độ Sáng', 'info');
-        });
+        // Nút theme nằm trong header đã bỏ → guard null
+        if (themeToggle) {
+            themeToggle.addEventListener('click', () => {
+                const isDark = document.body.classList.toggle('dark-theme');
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+                updateThemeIcon(isDark);
+                showToast(isDark ? 'Đã kích hoạt chế độ Tối' : 'Đã kích hoạt chế độ Sáng', 'info');
+            });
+        }
 
         function updateThemeIcon(isDark) {
+            if (!themeIcon) return;
             if (isDark) {
                 themeIcon.innerHTML = `
                     <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path>
@@ -319,6 +323,9 @@
                 
                 filesData[fileStoreKey] = file;
                 showToast(`Đã nhận file: ${file.name}`, 'success');
+
+                // Đủ 2 file → tự động đối chiếu (không cần bấm nút)
+                if (filesData.fileA && filesData.fileB) runReconciliation();
             }
 
             function resetFile() {
@@ -376,9 +383,9 @@
 
         // Pagination States
         const pagination = {
-            unmatch: { page: 1, limit: 10, total: 0, filtered: [], search: '' },
-            brand: { page: 1, limit: 10, total: 0, filtered: [], search: '' },
-            match: { page: 1, limit: 10, total: 0, filtered: [], search: '' }
+            unmatch: { page: 1, limit: 30, total: 0, filtered: [], search: '' },
+            brand: { page: 1, limit: 30, total: 0, filtered: [], search: '' },
+            match: { page: 1, limit: 30, total: 0, filtered: [], search: '' }
         };
 
         // --- READ EXCEL HELPER ---
@@ -402,13 +409,14 @@
         }
 
         // --- RUN PROCESS RECONCILIATION ---
-        document.getElementById('processBtn').addEventListener('click', async () => {
+        // Tự động chạy khi đủ 2 file (gọi từ handleFile). Bỏ nút + checkbox thủ công.
+        async function runReconciliation() {
             if (!filesData.fileA || !filesData.fileB) {
                 showToast('Vui lòng chọn cả 2 file (File KOC & File Đơn Hàng) trước khi tiếp tục', 'error');
                 return;
             }
 
-            const skipHeader = document.getElementById('skipHeader').checked;
+            const skipHeader = true; // luôn bỏ qua dòng tiêu đề (mặc định)
             
             // Read column mapping values and convert from Excel letters to 0-based index
             const indexA_Id = excelLetterToCol(document.getElementById('colAId').value);
@@ -416,6 +424,7 @@
             
             const indexB_Compare = excelLetterToCol(document.getElementById('colBCompare').value);
             const indexB_Brand = excelLetterToCol(document.getElementById('colBBrand').value);
+            const indexB_Staff = excelLetterToCol('P'); // Cột P = Nhân sự phụ trách
 
             // Display loading indicator
             document.getElementById('loading').style.display = 'block';
@@ -432,23 +441,27 @@
                 
                 // 1. Process File B (Orders)
                 const mapB = new Map(); // Compare Value (lowercase) -> Set of Brands
+                const mapBStaff = new Map(); // Compare Value (lowercase) -> Set of Nhân sự (cột P)
                 allBrandsSet = new Set();
 
                 for (let i = startRow; i < dataB.length; i++) {
                     const row = dataB[i];
                     if (!row || row.length === 0) continue;
-                    
+
                     let valE = row[indexB_Compare] ? String(row[indexB_Compare]).trim().toLowerCase() : "";
                     let valN = row[indexB_Brand] ? String(row[indexB_Brand]).trim() : "";
-                    
+                    let valP = row[indexB_Staff] ? String(row[indexB_Staff]).trim() : "";
+
                     if (valE) {
                         if (!mapB.has(valE)) {
                             mapB.set(valE, new Set());
+                            mapBStaff.set(valE, new Set());
                         }
                         if (valN) {
                             mapB.get(valE).add(valN);
                             allBrandsSet.add(valN);
                         }
+                        if (valP) mapBStaff.get(valE).add(valP);
                     }
                 }
 
@@ -510,6 +523,7 @@
                             link: valLink,
                             gmv: valGMV,
                             brandsSent: mapB.get(compareValC),
+                            staffSent: mapBStaff.get(compareValC),
                             screenshotStatus: 'idle',
                             screenshotError: ''
                         });
@@ -583,7 +597,7 @@
                 document.getElementById('loading').style.display = 'none';
                 showToast(`Lỗi trong quá trình xử lý: ${error.message}. Kiểm tra cấu hình cột!`, 'error');
             }
-        });
+        }
 
         // --- CHART DRAWING ---
         function drawChart(unmatchCount, matchCount) {
@@ -703,7 +717,7 @@
             const tbody = document.querySelector('#brandTable tbody');
             tbody.innerHTML = `
                 <tr>
-                    <td colspan="6" class="empty-state">
+                    <td colspan="8" class="empty-state">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
                         </svg>
@@ -753,6 +767,22 @@
                 return (num / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
             }
             return num.toString();
+        }
+
+        // Badge trạng thái cào view: Đang cào / Lỗi / ĐẠT / LOẠI / Chờ cào (dùng chung unmatch + brand)
+        function buildStatusHtml(item) {
+            if (item.screenshotStatus === 'pending') {
+                return '<span class="status-dot-text"><span class="status-dot yellow"></span> Đang cào...</span>';
+            }
+            if (item.screenshotStatus === 'error') {
+                const errMsg = item.screenshotError || 'Lỗi cào view';
+                const shortErr = errMsg === 'TIMEOUT' ? 'Timeout' : errMsg.toLowerCase().includes('captcha') ? 'Captcha' : errMsg.toLowerCase().includes('video') ? 'Ít video' : 'Lỗi TikTok';
+                return `<span class="status-dot-text" title="${errMsg}"><span class="status-dot red"></span> ${shortErr}</span>`;
+            }
+            if (item.viewSum !== undefined) {
+                return item.isRejected ? '<span class="badge-reject">LOẠI</span>' : '<span class="badge-accept">ĐẠT</span>';
+            }
+            return '<span style="color: var(--text-muted);">Chờ cào view</span>';
         }
 
         function renderTable(type) {
@@ -812,23 +842,11 @@
                 }
 
                 if (type === 'unmatch') {
-                    let statusHtml = '<span style="color: var(--text-muted);">Chờ cào view</span>';
+                    const statusHtml = buildStatusHtml(item);
                     let viewSumHtml = '-';
-                    
-                    if (item.screenshotStatus === 'pending') {
-                        statusHtml = '<span class="status-dot-text"><span class="status-dot yellow"></span> Đang cào...</span>';
-                    } else if (item.screenshotStatus === 'error') {
-                        const errMsg = item.screenshotError || 'Lỗi cào view';
-                        const shortErr = errMsg === 'TIMEOUT' ? 'Timeout' : errMsg.toLowerCase().includes('captcha') ? 'Captcha' : errMsg.toLowerCase().includes('video') ? 'Ít video' : 'Lỗi TikTok';
-                        statusHtml = `<span class="status-dot-text" title="${errMsg}"><span class="status-dot red"></span> ${shortErr}</span>`;
-                    } else if (item.viewSum !== undefined) {
+                    if (item.viewSum !== undefined) {
                         const sumFormatted = formatViewCount(item.viewSum);
                         viewSumHtml = `<span style="font-weight:600; color:var(--text-main);" title="Chi tiết: ${item.views ? item.views.slice(0, 10).join(', ') : ''}">${sumFormatted}</span>`;
-                        if (item.isRejected) {
-                            statusHtml = `<span class="badge-reject">LOẠI</span>`;
-                        } else {
-                            statusHtml = `<span class="badge-accept">ĐẠT</span>`;
-                        }
                     }
                     
                     // Ô tick chỉ cho KOC đạt (để xuất riêng nhóm được chọn)
@@ -860,14 +878,31 @@
                         const sumFormatted = formatViewCount(item.viewSum);
                         viewSumHtml = `<span style="font-weight:600; color:var(--text-main);">${sumFormatted}</span>`;
                     }
-                    tr.innerHTML = `
-                        <td>${stt}</td>
-                        <td style="font-weight: 600;">${item.id || '-'}</td>
-                        <td>${brandsHtml || '<span style="color: var(--text-muted); font-size: 0.75rem;">Trùng nhưng rỗng Brand</span>'}</td>
-                        <td>${linkHtml}</td>
-                        <td>${viewSumHtml}</td>
-                        <td>${coverHtml}</td>
-                    `;
+                    const brandsCell = brandsHtml || '<span style="color: var(--text-muted); font-size: 0.75rem;">Trùng nhưng rỗng Brand</span>';
+                    if (type === 'brand') {
+                        // Bảng "Trùng nhưng thiếu Brand" có thêm cột Nhân sự (cột P file B)
+                        const staffText = item.staffSent && item.staffSent.size
+                            ? Array.from(item.staffSent).join(', ') : '-';
+                        tr.innerHTML = `
+                            <td>${stt}</td>
+                            <td style="font-weight: 600;">${item.id || '-'}</td>
+                            <td>${brandsCell}</td>
+                            <td>${staffText}</td>
+                            <td>${linkHtml}</td>
+                            <td>${viewSumHtml}</td>
+                            <td>${buildStatusHtml(item)}</td>
+                            <td>${coverHtml}</td>
+                        `;
+                    } else { // match
+                        tr.innerHTML = `
+                            <td>${stt}</td>
+                            <td style="font-weight: 600;">${item.id || '-'}</td>
+                            <td>${brandsCell}</td>
+                            <td>${linkHtml}</td>
+                            <td>${viewSumHtml}</td>
+                            <td>${coverHtml}</td>
+                        `;
+                    }
                 }
                 tbody.appendChild(tr);
             });
@@ -915,6 +950,7 @@
                 dataToExport = pagination.brand.filtered.map(i => ({
                     "KOC ID": i.id,
                     "Các Brand Đã Có Đơn": Array.from(i.brandsSent).join(', '),
+                    "Nhân sự": i.staffSent ? Array.from(i.staffSent).join(', ') : "",
                     "Link TikTok (Cột R)": i.link,
                     "Tổng View 7 Video": i.viewSum !== undefined ? i.viewSum : "",
                     "User ID": i.userId || "",

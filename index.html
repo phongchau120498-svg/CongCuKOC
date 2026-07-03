@@ -20,24 +20,6 @@
 <body>
 
     <div class="container">
-        <!-- Top Header & Bookmarklet Widget -->
-        <header class="header glass-card">
-            <div class="brand-section">
-                <h1>Công Cụ KOC Toàn Diện Pro</h1>
-                <p>Hệ thống Đối chiếu Tự động & Hỗ trợ Lấy nhanh View TikTok</p>
-            </div>
-
-            <div class="action-bar">
-                <!-- Theme switcher -->
-                <button class="btn-icon" id="themeToggle" title="Chuyển chế độ sáng/tối">
-                    <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="4"></circle>
-                        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
-                    </svg>
-                </button>
-            </div>
-        </header>
-
         <div class="app-layout">
             <!-- Sidebar nav -->
             <nav class="sidebar">
@@ -55,6 +37,8 @@
             <!-- Page content -->
             <div class="page-content">
                 <div id="page-reconcile">
+        <div class="reconcile-split">
+        <div class="reconcile-left">
 
         <!-- Dropzones Row -->
         <main class="dropzone-grid">
@@ -166,25 +150,14 @@
             </div>
         </div>
 
-        <!-- Controls Trigger Reconciliation -->
-        <div class="control-bar glass-card">
-            <label class="checkbox-container">
-                Bỏ qua dòng đầu tiên (Dòng tiêu đề của bảng)
-                <input type="checkbox" id="skipHeader" checked>
-                <span class="checkmark"></span>
-            </label>
-
-            <button id="processBtn" class="btn-primary">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect><path d="M9 14l2 2 4-4"></path></svg>
-                Tiến Hành Đối Chiếu Dữ Liệu
-            </button>
-        </div>
-
         <!-- Spinner Loading -->
         <div class="loading-section" id="loading">
             <div class="spinner"></div>
             <p class="loading-text">Hệ thống đang nạp và so khớp hàng ngàn bản ghi, vui lòng đợi...</p>
         </div>
+
+        </div><!-- /reconcile-left -->
+        <aside class="reconcile-right">
 
         <!-- Results Dashboard Area -->
         <section class="dashboard-area" id="resultArea">
@@ -361,14 +334,16 @@
                                     <th style="width: 70px;">STT</th>
                                     <th>KOC ID</th>
                                     <th>Các Brand Đã Có Đơn</th>
+                                    <th>Nhân sự</th>
                                     <th>Link TikTok</th>
                                     <th>Tổng View 7 Video</th>
+                                    <th>Trạng thái</th>
                                     <th style="width: 170px;">Chủ đề kênh</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 <tr>
-                                    <td colspan="6" class="empty-state">
+                                    <td colspan="8" class="empty-state">
                                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
                                         </svg>
@@ -458,6 +433,9 @@
                 </div>
             </div>
         </section>
+
+        </aside><!-- /reconcile-right -->
+        </div><!-- /reconcile-split -->
 
                 </div><!-- /page-reconcile -->
 

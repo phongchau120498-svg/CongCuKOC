@@ -77,8 +77,22 @@
         }
 
         .container {
-            max-width: 1280px;
+            /* ponytail: 1600px đủ cho layout 2 cột; chỉnh nếu màn nhỏ hơn */
+            max-width: 1600px;
             margin: 0 auto;
+        }
+
+        /* Layout 2 cột trang đối chiếu: trái = uploads/config, phải = bảng full height */
+        .reconcile-split { display: flex; gap: 1.25rem; align-items: flex-start; }
+        .reconcile-left  { flex: 0 0 360px; max-width: 360px; }
+        .reconcile-right { flex: 1; min-width: 0; }
+        .reconcile-left .dropzone-grid { grid-template-columns: 1fr; }
+        .reconcile-right .dashboard-area { position: sticky; top: 1.5rem; }
+
+        @media (max-width: 1024px) {
+            .reconcile-split { flex-direction: column; }
+            .reconcile-left { flex-basis: auto; max-width: none; }
+            .reconcile-left .dropzone-grid { grid-template-columns: 1fr 1fr; }
         }
 
         /* Layout & Typography Helpers */
@@ -876,7 +890,7 @@
             overflow-x: auto;
             border: 1px solid var(--border-color);
             border-radius: var(--radius-md);
-            max-height: 400px;
+            max-height: calc(100vh - 240px);
             background: var(--bg-card-solid);
         }
 
