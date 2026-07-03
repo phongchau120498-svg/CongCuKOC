@@ -92,7 +92,80 @@
             return letter;
         }
 
-        // --- CHROME EXTENSION SCRAPER INTEGRATION ---
+        // --- TIKWM API SCRAPER (thay extension cho khâu cào view) ---
+        const TIKWM_MAX_RETRY = 3;
+        const TIKWM_TIMEOUT_MS = 25000;
+
+        // fetch có timeout (copy pattern từ code React tham chiếu)
+        async function fetchWithTimeout(url, timeoutMs = TIKWM_TIMEOUT_MS) {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+            try {
+                return await fetch(url, { signal: ctrl.signal });
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        // Pool 3 nguồn lấy user/posts: tikwm trực tiếp → 2 proxy fallback khi bị rate-limit/chặn
+        const TIKWM_POOL = [
+            async (username) => {
+                const res = await fetchWithTimeout(`https://tikwm.com/api/user/posts?unique_id=${encodeURIComponent(username)}&count=12`);
+                return res.json();
+            },
+            async (username) => {
+                const target = `https://tikwm.com/api/user/posts?unique_id=${username}&count=12`;
+                const res = await fetchWithTimeout(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(target)}`);
+                return res.json();
+            },
+            async (username) => {
+                const target = `https://tikwm.com/api/user/posts?unique_id=${username}&count=12`;
+                const res = await fetchWithTimeout(`https://api.allorigins.win/get?url=${encodeURIComponent(target)}`);
+                const data = await res.json();
+                return JSON.parse(data.contents);
+            },
+        ];
+
+        // Cào view 1 KOC qua tikwm. Trả về CÙNG shape với result cũ của extension
+        // để downstream (worker, render, export) không phải sửa.
+        async function scrapeViaTikwm(link) {
+            const username = link.split('@')[1]?.split(/[/?#]/)[0]?.toLowerCase();
+            if (!username) return { success: false, error: 'BAD_LINK' };
+
+            let rateLimited = false;
+            for (let apiIdx = 0; apiIdx < TIKWM_POOL.length; apiIdx++) {
+                for (let retry = 0; retry < TIKWM_MAX_RETRY; retry++) {
+                    try {
+                        const json = await TIKWM_POOL[apiIdx](username);
+                        if (json && json.code === 0 && Array.isArray(json.data?.videos)) {
+                            const videos = json.data.videos;
+                            if (videos.length < 4) return { success: false, error: 'FETCH_NO_DATA' };
+                            const views = videos.map(v => parseInt(v.play_count) || 0);
+                            const viewSum = views.slice(3, 10).reduce((a, b) => a + b, 0); // logic cũ: bỏ 3 video ghim đầu, cộng 7 video
+                            // covers + coverViews căn cùng index (chỉ video có ảnh bìa) để badge view khớp đúng ảnh
+                            const withCover = videos.filter(v => v.cover).slice(0, 9);
+                            const covers = withCover.map(v => v.cover);
+                            const coverViews = withCover.map(v => parseInt(v.play_count) || 0);
+                            const userId = videos[0]?.author?.id || null;
+                            return { success: true, viewSum, views, covers, coverViews, userId, bio: '', isRejected: viewSum < 1500 };
+                        }
+                        // code === -1 = "Free Api Limit" → rate-limit, backoff rồi thử API kế
+                        if (json && json.code === -1) {
+                            rateLimited = true;
+                            await new Promise(r => setTimeout(r, 1500 * (retry + 1)));
+                            continue;
+                        }
+                        // code khác (user không tồn tại / private) → không retry API này
+                        break;
+                    } catch (err) {
+                        await new Promise(r => setTimeout(r, 2000 * (retry + 1)));
+                    }
+                }
+            }
+            return { success: false, error: rateLimited ? 'RATE_LIMIT' : 'FETCH_NO_DATA' };
+        }
+
+        // --- CHROME EXTENSION SCRAPER INTEGRATION (chỉ còn dùng cho NHẮN TIN) ---
         let activeScrapeResolvers = {}; // index -> resolve function
         let coversCache = {}; // koc id -> [base64 covers] (cho lightbox xem 1 lần cả 9 ảnh)
         const selectedUnmatch = new Set(); // id các KOC đạt được tick để xuất riêng
@@ -498,14 +571,12 @@
                 // Smooth scroll to results
                 document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth' });
 
-                // Proactive extension scraping auto-trigger
-                if (isExtensionActive()) {
-                    setTimeout(() => {
-                        showToast('Đang tự động khởi chạy cào view hàng loạt bằng 5 luồng cho KOC Chưa Đơn...', 'info');
-                        currentBatchType = 'unmatch';
-                        startBatchProcessing();
-                    }, 1000);
-                }
+                // Tự động cào view qua tikwm API ngay sau khi đối chiếu (không cần extension)
+                setTimeout(() => {
+                    showToast('Đang tự động cào view hàng loạt qua tikwm API cho KOC Chưa Đơn...', 'info');
+                    currentBatchType = 'unmatch';
+                    startBatchProcessing();
+                }, 1000);
 
             } catch (error) {
                 console.error(error);
@@ -732,8 +803,9 @@
                 let coverHtml = '-';
                 if (item.covers && item.covers.length) {
                     const key = item.id || item.valC;
-                    coversCache[key] = item.covers;
-                    const imgs = item.covers.slice(0, 9).map(u => `<img src="${u}">`).join('');
+                    coversCache[key] = { urls: item.covers, views: item.coverViews || [] };
+                    // ponytail: referrerpolicy no-referrer né chặn hotlink theo referer; thêm proxy chỉ nếu ảnh vẫn 403
+                    const imgs = item.covers.slice(0, 9).map(u => `<img src="${u}" loading="lazy" referrerpolicy="no-referrer">`).join('');
                     coverHtml = `<div class="cover-grid" onclick="openCoversLightbox('${String(key).replace(/'/g, "\\'")}')" title="Bấm để xem ${item.covers.length} ảnh bìa">${imgs}</div>`;
                 } else if (item.screenshotStatus === 'pending') {
                     coverHtml = `<span class="screenshot-loading"><span class="spinner-small"></span></span>`;
@@ -945,8 +1017,10 @@
 
         // Bấm 1 cái → hiện cả 9 ảnh bìa dạng lưới lớn để lia nhanh 1 lần
         function openCoversLightbox(key) {
-            const covers = coversCache[key] || [];
-            if (!covers.length) return;
+            const entry = coversCache[key];
+            const urls = Array.isArray(entry) ? entry : (entry?.urls || []); // tương thích cache cũ (mảng url)
+            const cViews = Array.isArray(entry) ? [] : (entry?.views || []);
+            if (!urls.length) return;
             const modal = document.getElementById('lightboxModal');
             const img = document.getElementById('lightboxImg');
             const grid = document.getElementById('lightboxGrid');
@@ -955,8 +1029,12 @@
             img.style.display = 'none';
             img.src = '';
             grid.style.display = 'grid';
-            grid.innerHTML = covers.map(u => `<img src="${u}">`).join('');
-            caption.textContent = `Ảnh bìa kênh KOC: ${key} (${covers.length} video)`;
+            grid.innerHTML = urls.map((u, i) => {
+                const badge = cViews[i] !== undefined
+                    ? `<span class="cover-view-badge">▶ ${formatViewCount(cViews[i])}</span>` : '';
+                return `<div class="cover-cell"><img src="${u}" referrerpolicy="no-referrer">${badge}</div>`;
+            }).join('');
+            caption.textContent = `Ảnh bìa kênh KOC: ${key} (${urls.length} video)`;
             modal.style.display = 'flex';
         }
 
@@ -964,27 +1042,35 @@
             document.getElementById('lightboxModal').style.display = 'none';
         }
 
-        // Cào view một link đơn
+        // Cào view một link đơn (tikwm API)
         async function captureSingle(id, url, absoluteIndex, tableType) {
-            if (!isExtensionActive()) {
-                showToast('Extension chưa hoạt động! Vui lòng kiểm tra lại.', 'error');
-                return;
-            }
             let listToSearch = tableType === 'unmatch' ? unmatchedTotalData : tableType === 'match' ? matchedTotalData : missingBrandDataFiltered;
             const item = listToSearch[absoluteIndex];
             if (!item) return;
             item.screenshotStatus = 'pending';
             item.screenshotError = '';
             renderTable(tableType);
-            await scrapeViaExtension(url, absoluteIndex, tableType);
+            const result = await scrapeViaTikwm(url);
+            if (result.success) {
+                item.screenshotStatus = 'idle';
+                item.views = result.views;
+                item.viewSum = result.viewSum;
+                item.covers = result.covers || [];
+                item.coverViews = result.coverViews || [];
+                item.isRejected = result.isRejected;
+                item.userId = result.userId || item.userId;
+                item.bio = result.bio || item.bio;
+                showToast(`Trích xuất thành công: ${item.id || item.valC}`, 'success');
+            } else {
+                item.screenshotStatus = 'error';
+                item.screenshotError = result.error || 'Lỗi cào view';
+                showToast(`Lỗi: ${item.screenshotError}`, 'error');
+            }
+            renderTable(tableType);
         }
 
         // Open Batch Capture Modal (Bypassed modal, directly starts processing)
         function openBatchCaptureModal(tableType) {
-            if (!isExtensionActive()) {
-                showToast('Extension chưa hoạt động! Vui lòng kiểm tra lại.', 'error');
-                return;
-            }
             currentBatchType = tableType;
             startBatchProcessing();
         }
@@ -1005,11 +1091,6 @@
 
         // Start Batch Processing Loop
         async function startBatchProcessing() {
-            if (!isExtensionActive()) {
-                showToast('Tiện ích (Extension) chưa hoạt động! Vui lòng kiểm tra lại.', 'error');
-                return;
-            }
-
             batchProcessingActive = true;
             batchCancelRequested = false;
 
@@ -1033,8 +1114,8 @@
             const headless = document.getElementById('batchHeadful') ? !document.getElementById('batchHeadful').checked : true;
             const delayValue = document.getElementById('batchDelay') ? (parseInt(document.getElementById('batchDelay').value) * 1000 || 4000) : 4000;
             
-            // 2 threads: cân bằng tốc độ vs tránh Akamai chặn IP (3 luồng từng bị "Access Denied")
-            const numThreads = isExtensionActive() ? 2 : 1;
+            // ponytail: 3 luồng cho tikwm API; giới hạn theo IP nên không đẩy cao, tăng nếu bị RATE_LIMIT
+            const numThreads = 3;
 
             // Get target list
             let sourceData = [];
@@ -1097,29 +1178,17 @@
                     item.screenshotStatus = 'pending';
                     renderTable(currentBatchType);
 
-                    const absoluteIndex = sourceData.indexOf(item);
-
                     try {
-                        let result;
-                        if (isExtensionActive()) {
-                            // Stagger luồng + jitter ngẫu nhiên → 2 luồng không bắn request cùng nhịp (giống người)
-                            const staggerDelay = workerId * 2000 + Math.random() * 1500;
-                            await new Promise(resolve => setTimeout(resolve, staggerDelay));
+                        // ponytail: throttle nhẹ cho tikwm (stagger luồng + cooldown ngắn), tăng nếu bị RATE_LIMIT
+                        const staggerDelay = workerId * 300 + Math.random() * 300;
+                        await new Promise(resolve => setTimeout(resolve, staggerDelay));
 
-                            result = await scrapeViaExtension(item.link, absoluteIndex, currentBatchType, workerId);
-                            // Retry 1 lần nếu TikTok trả lỗi tạm thời
-                            if (!result.success && result.error === 'TIKTOK_ERROR' && !batchCancelRequested) {
-                                await new Promise(r => setTimeout(r, 3000));
-                                result = await scrapeViaExtension(item.link, absoluteIndex, currentBatchType, workerId);
-                            }
-                            // Cooldown 3-5s có jitter sau mỗi item → nhịp request giống người, tránh Akamai
-                            await new Promise(r => setTimeout(r, 3000 + Math.random() * 2000));
-                        } else {
-                            result = { success: false, error: 'Extension not active' };
-                        }
+                        const result = await scrapeViaTikwm(item.link);
 
-                        // Bị chặn IP → backoff toàn cục + cào lại chính KOC này (tối đa 3 lần)
-                        if (!batchCancelRequested && result && result.error === 'TIKTOK_BLOCKED') {
+                        await new Promise(r => setTimeout(r, 300 + Math.random() * 500));
+
+                        // tikwm rate-limit → backoff toàn cục + cào lại chính KOC này (tối đa 3 lần)
+                        if (!batchCancelRequested && result && result.error === 'RATE_LIMIT') {
                             item.blockRetries = (item.blockRetries || 0) + 1;
                             if (item.blockRetries < 3) {
                                 // Làn chặn mới (chưa đang nghỉ) → đặt mốc nghỉ chung, tăng thời gian nghỉ dần
@@ -1142,7 +1211,10 @@
                             item.views = result.views;
                             item.viewSum = result.viewSum;
                             item.covers = result.covers || [];
+                            item.coverViews = result.coverViews || [];
                             item.isRejected = result.isRejected;
+                            item.userId = result.userId || item.userId;
+                            item.bio = result.bio || item.bio;
                             successCount++;
                             if (badge) {
                                 badge.textContent = 'THÀNH CÔNG';

@@ -1187,6 +1187,29 @@
             border-radius: 8px;
         }
 
+        .lightbox-grid .cover-cell {
+            position: relative;
+            display: inline-block;
+            line-height: 0;
+        }
+
+        .cover-view-badge {
+            position: absolute;
+            top: 6px;
+            left: 6px;
+            background: rgba(0, 0, 0, 0.65);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1;
+            padding: 3px 6px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            pointer-events: none;
+        }
+
         .screenshot-cell {
             display: flex;
             align-items: center;
